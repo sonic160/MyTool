@@ -10,6 +10,8 @@ handle_lambda_int = @(t) (lambda_0*t + gamma_a*(phi*t + .5*beta_s*t.^2)); % inte
 %% Test using the distribution of first arrival time
 % Using the fact that CDF of waiting time = t is $F_s(t) =
 % 1-exp(-\int_s^{s+t}\lambda (u) du)$
+T_max = .5/lambda_0;
+t_0 = 1e5;
 NS = 1e5;
 t_next_sim = zeros(NS,1);
 for i = 1:NS
@@ -18,6 +20,7 @@ for i = 1:NS
 end
 P = (1:NS)/NS;
 t_next_sim = sort(t_next_sim);
+t = linspace(t_0,t_0+4/lambda_0,1e3);
 CDF_true = 1-exp(-1*handle_lambda_int(t)+handle_lambda_int(t_0));
 figure
 plot(t,CDF_true,'-k')
