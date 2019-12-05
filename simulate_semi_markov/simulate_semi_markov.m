@@ -16,9 +16,7 @@ while 1
     % Generate next state
     y_next = rando(P(y(i),:)); % Simulate next state using the transitin matrix of the embedded chain
     % Generate holding time
-    r = rand; % A random number from uniform dist
-    eq = @(t) cal_holding_time_cdf(t,Q_t,P,y(i),y_next) - r; % Equation for inverse function of holding time cdf
-    t_next = fzero(eq,0); % Inverse function method to generate random number
+    t_next = generate_t_next(t,Q_t,P,y(i),y_next);
     t_cur = t(i) + t_next; % Update time
     if t_cur < T_max % If this transition happens in the evaluation horizon
         % Update the parameters
@@ -41,6 +39,13 @@ while ((u > s) && (i < length(p)))
     s=s+p(i);
 end
 index=i;
+
+% This is to generate the next arrival time
+function t_next = generate_t_next(t,Q_t,P,y_prev,y_next)
+r = rand; % A random number from uniform dist
+eq = @(t) cal_holding_time_cdf(t,Q_t,P,y_prev,y_next) - r; % Equation for inverse function of holding time cdf
+t_next = fzero(eq,0); % Inverse function method to generate random number
+
 
 % This is to calculate the holding time distribution
 function cdf_ht_t = cal_holding_time_cdf(t,Q_t,P,y_prev,y_next)
