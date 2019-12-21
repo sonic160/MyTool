@@ -10,7 +10,7 @@ pd_t_f = makedist('weibull','a',a,'b',b); % Time to failure distribution
 mu = 1; sigma = .1;
 pd_t_r = makedist('lognormal','mu',mu,'sigma',sigma); % Time to repair distribution
 T_max = 20;
-t = linspace(.1,30,T_max); % Evaluate time
+t = linspace(.1,T_max,10); % Evaluate time
 ns = 1e3; % Sample size
 A_t_ref = zeros(1,length(t)); % Availability
 for i = 1:length(t)
@@ -45,7 +45,7 @@ end
 figure
 plot(t,A_t_ref,'-o')
 hold on
-%% Run the simulation using the algorithm being tested
+%% Run the simulation using the algorithm being tested - CDF approach
 pi = [1,0];
 Q_01 = @(t) wblcdf(t,a,b);
 Q_10 = @(t) logncdf(t,mu,sigma);
@@ -54,6 +54,7 @@ Q_t = @(t) [0, Q_01(t);...
 P = [0, 1;...
     1, 0];
 % Calculate the same availability
+fprintf('\n CDF approach\n')
 A_t_sim = zeros(1,length(t)); % Availability
 for i = 1:length(t)
     fprintf('%d/%d\n',i,length(t));
@@ -67,3 +68,32 @@ for i = 1:length(t)
     A_t_sim(i) = count/ns;
 end
 plot(t,A_t_sim,'-dr')
+%% PDF approach
+% Defining the pdf of the holding time.
+pi = [1,0];
+P = [0, 1;...
+     1, 0];
+f_01 = @(t) wblpdf(t,a,b);
+f_10 = @(t) lognpdf(t,mu,sigma);
+f_t = {0, f_01;...
+    f_10,0};
+max_value = [0,.85;...
+    1.5,0]; % maximums in the support
+support = {[0,0],[0,100];...
+    [0,8],[0,100]};
+% Calculate the same availability
+fprintf('\n PDF approach\n')
+A_t_sim_pdf = zeros(1,length(t)); % Availability
+for i = 1:length(t)
+    fprintf('%d/%d\n',i,length(t));
+    count = 0; % Counter
+    for j = 1:ns
+        [temp_t,y] = simulate_semi_markov_rejection(f_t,max_value,support,...
+            P,pi,t(i));
+        if y(end) == 1
+            count = count + 1;
+        end
+    end
+    A_t_sim_pdf(i) = count/ns;
+end
+plot(t,A_t_sim_pdf,'-hg')

@@ -5,7 +5,8 @@
 %        T_max - Evaluation horizon.
 % Output: t - times of the jumps.
 %         y - the state after the jumps.
-% History:  20191205 - Created by ZZ
+% History:  20191221 - Fixed bug: generate_t_next
+%           20191205 - Created by ZZ
 
 function [t,y] = simulate_semi_markov(Q_t,P,pi,T_max)
 t(1) = 0; % start times at 0
@@ -16,7 +17,7 @@ while 1
     % Generate next state
     y_next = rando(P(y(i),:)); % Simulate next state using the transitin matrix of the embedded chain
     % Generate holding time
-    t_next = generate_t_next(t,Q_t,P,y(i),y_next);
+    t_next = generate_t_next(Q_t,P,y(i),y_next);
     t_cur = t(i) + t_next; % Update time
     if t_cur < T_max % If this transition happens in the evaluation horizon
         % Update the parameters
@@ -41,7 +42,7 @@ end
 index=i;
 
 % This is to generate the next arrival time
-function t_next = generate_t_next(t,Q_t,P,y_prev,y_next)
+function t_next = generate_t_next(Q_t,P,y_prev,y_next)
 r = rand; % A random number from uniform dist
 eq = @(t) cal_holding_time_cdf(t,Q_t,P,y_prev,y_next) - r; % Equation for inverse function of holding time cdf
 t_next = fzero(eq,0); % Inverse function method to generate random number
