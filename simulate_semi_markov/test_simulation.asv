@@ -83,17 +83,15 @@ f_10 = @(t) lognpdf(t,mu,sigma);
 f_t = {0, f_01;...
     f_10,0};
 % Proposal density
-g_01 = @(t) exppdf(t,10);
-g_10 = @(t) normpdf(t,2.7,.35);
-g = {0,g_01;...
-    g_10,0};
-% Random number generator for the proposal density
-g_rng_01 = @(t) exprnd(10);
-g_rng_10 = @(t) normrnd(2.7,.35);
-g_rng = {0,g_rng_01;...
-    g_rng_10,0};
-% Adjustment factor
-c = [0,1.15; 1.35,0];
+g = {0,exppdf(t,10);...
+    normpdf(t,2.7,.35),0};
+g_rng = {0,exprnd(10);...
+    normrnd(2.)}
+
+max_value = [0,.85;...
+    1.5,0]; % maximums in the support
+support = {[0,0],[0,100];...
+    [0,8],[0,100]};
 % Calculate the same availability
 fprintf('\n PDF approach\n')
 A_t_sim_pdf = zeros(1,length(t)); % Availability
@@ -101,7 +99,7 @@ for i = 1:length(t)
     fprintf('%d/%d\n',i,length(t));
     count = 0; % Counter
     for j = 1:ns
-        [temp_t,y] = simulate_semi_markov_rejection(f_t,g,g_rng,c,...
+        [temp_t,y] = simulate_semi_markov_rejection(f_t,max_value,support,...
             P,pi,t(i));
         if y(end) == 1
             count = count + 1;

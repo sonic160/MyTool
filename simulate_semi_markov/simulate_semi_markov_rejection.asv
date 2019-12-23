@@ -15,45 +15,42 @@
 %                     Extend to be applicable using proposal density.
 %          20191221 - Created by ZZ
 
-function [t,y] = simulate_semi_markov_rejection(f_t,g_t,g_rng_t,c_t,P,pi,T_max)
-    t(1) = 0; % start times at 0
-    y(1) = rando(pi); % generate the initial y
+function [t,y] = simulate_semi_markov_rejection(f_t,g_t,c_t,,P,pi,T_max)
+t(1) = 0; % start times at 0
+y(1) = rando(pi); % generate the initial y
 
-    i = 1; % Index of the current state
-    while 1
-        % Generate next state
-        y_next = rando(P(y(i),:)); % Simulate next state using the transitin matrix of the embedded chain
-        % Generate holding time
-        pdf_holding_time = f_t{y(i),y_next}; % handle to the holding time distribution pdf
-        prop_den = g_t{y(i),y_next}; % Handle to the proposal density.
-        prop_rng = g_rng_t{y(i),y_next}; % Handle for generating samples from the proposal density.
-        c = c_t(y(i),y_next);
-        t_next = accrejrnd(pdf_holding_time,prop_den,prop_rng,c,1,1); % Generate random number from pdf.
-        t_cur = t(i) + t_next; % Update time
-        if t_cur < T_max % If this transition happens in the evaluation horizon
-            % Update the parameters
-            t(i+1) = t_cur;
-            y(i+1) = y_next;
-            i = i+1;
-        else
-            break;
-        end
+i = 1; % Index of the current state
+while 1
+    % Generate next state
+    y_next = rando(P(y(i),:)); % Simulate next state using the transitin matrix of the embedded chain
+    % Generate holding time
+    pdf_holding_time = f_t{y(i),y_next}; % handle to the holding time distribution pdf
+    upper_bound = max_value(y(i),y_next); % Get the upper bound of the pdf.
+    range = support{y(i),y_next}; % Get the range of the pdf.
+    t_next = accrejrnd(pdf_holding_time,upper_bound,1,range); % Generate random number from pdf.
+    t_cur = t(i) + t_next; % Update time
+    if t_cur < T_max % If this transition happens in the evaluation horizon
+        % Update the parameters
+        t(i+1) = t_cur;
+        y(i+1) = y_next;
+        i = i+1;
+    else
+        break;
     end
 end
 
 %  rando.m generates a random variable in 1, 2, ..., n given a distribution 
 %  vector. 
 function index = rando(p)
-    u = rand;
-    i = 1;
-    s = p(1);
-    while ((u > s) && (i < length(p)))
-        i=i+1;
-        s=s+p(i);
-    end
-    index=i;
+u = rand;
+i = 1;
+s = p(1);
+while ((u > s) && (i < length(p)))
+    i=i+1;
+    s=s+p(i);
 end
-    
+index=i;
+
 % This is to generate a random number given a pdf using rejection method.
 % f - target pdf.
 % g - proposal density.
