@@ -106,7 +106,7 @@ time_rejection_f_02 = toc
 tic;
 u = rand(1,ns);
 u = sort(u);
-index = find(u<p_th);
+index = find(u<p_th_f_02);
 sample_f_02_0_NN = zeros(1,ns);
 sample_f_02_0_NN(index) = net_f_02_upper([u(index); tau*ones(1,length(index))]);
 sample_f_02_0_NN(index(end)+1:end) = net_f_02_tail([u(index(end)+1:end);...
@@ -119,7 +119,6 @@ histogram(sample_f_02_0)
 hold on;
 histogram(sample_f_02_0_NN)
 legend('Rejection method','NN-based sampling')
-
 
 %% Sampling f_02: rejection method: tau = 0
 sample_f_02_1000 = zeros(1,ns); % Preallocate memory
@@ -147,7 +146,7 @@ end
 %% Test NN
 u = rand(1,ns);
 u = sort(u);
-index = find(u<p_th);
+index = find(u<p_th_f_02);
 sample_f_02_1000_NN = zeros(1,ns);
 sample_f_02_1000_NN(index) = net_f_02_upper([u(index); tau*ones(1,length(index))]);
 sample_f_02_1000_NN(index(end)+1:end) = net_f_02_tail([u(index(end)+1:end);...
