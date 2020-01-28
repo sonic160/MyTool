@@ -26,104 +26,150 @@ pd_t_r = makedist('weibull','a',eta_r,'b',beta_r);
 evaluation_horizon = 1e3;
 t = linspace(.1,evaluation_horizon,10); % Evaluate time
 
-ns = 1e5; % Sample size
+ns = 1e6; % Sample size
 
 %% Create benchmark
 p_t_ref = zeros(4,length(t)); % p(t): 4*1, each column corresponds to one state
+sample_path = cell(1,ns); % Store all the sample path up to evaluation_horizon.
+sample_jump_time = cell(1,ns); % Store all the jump times up to evaluation_horizon.
 
 tic;
-for i = 1:length(t)
-    fprintf('%d/%d\n',i,length(t));
-    count_0 = 0; count_1 = 0; count_2 = 0; count_3 = 0; % Counter for ending at each state
-    for j = 1:ns
-        t_cur = 0; % Initial value of time
-        state = 0; % Start from working
-        while 1
-            switch state
-                case 0 % If current state is perfect state
-                    theta = pd_disp.random(); % Interarrival time
+for j = 1:ns
+    t_cur = 0; % Initial value of time
+    state = 0; % Start from working
+    
+    % Initialize
+    temp_sample_path = -1*ones(1,1000); % Vector for the sample path.
+    temp_sample_jump_time = -1*ones(1,1000); % Vector for the sample path.
+    
+    index = 1; % Intial value for the index of the states.
+    temp_sample_path(index) = 0; 
+    temp_sample_jump_time(index) = 0; 
+    
+    while 1
+        index = index + 1; % Next state.
+        switch state
+            case 0 % If current state is perfect state
+                theta = pd_disp.random(); % Interarrival time
+                t_next = t_cur + theta; % Calculate the event occurrence tiem
+                if t_next > evaluation_horizon % Beyond evaluation horizon
+                    t_cur = evaluation_horizon;
+                    
+                    temp_sample_path(index) = state;
+                    temp_sample_jump_time(index) = t_cur;
+                    break;
+                else
+                    t_cur = t_next;
+                    % Decide what is the next state
+                    is_large_damage = binornd(1,p_large);
+                    is_fail_sb = binornd(1,pd_t_f_s.cdf(t_cur));                     
+                    if is_large_damage == 1 % If large damage happens
+                        state = 3; % Absorption state
+                    else
+                        if is_fail_sb == 1 % If safety barrier fails
+                            state = 2; % Degradation state
+                        else % If safety barrier is OK
+                            state = 1; % Dummy state 0
+                        end
+                    end
+                                        
+                    temp_sample_path(index) = state;
+                    temp_sample_jump_time(index) = t_cur;
+                end
+            case 1 % Dummy perfect state: it is equivalant to the perfect state
+                theta = pd_disp.random(); % Interarrival time
+                t_next = t_cur + theta; % Calculate the event occurrence tiem
+                if t_next > evaluation_horizon % Beyond evaluation horizon
+                    t_cur = evaluation_horizon;                   
+                                        
+                    temp_sample_path(index) = state;
+                    temp_sample_jump_time(index) = t_cur;
+                    break;
+                else
+                    t_cur = t_next;
+                    % Decide what is the next state
+                    is_large_damage = binornd(1,p_large);
+                    is_fail_sb = binornd(1,pd_t_f_s.cdf(t_cur));                     
+                    if is_large_damage == 1 % If large damage happens
+                        state = 3; % Absorption state
+                    else
+                        if is_fail_sb == 1 % If safety barrier fails
+                            state = 2; % Degradation state
+                        else % If safety barrier is OK
+                            state = 0; % Dummy state 0
+                        end
+                    end                    
+                                        
+                    temp_sample_path(index) = state;
+                    temp_sample_jump_time(index) = t_cur;
+                end
+            case 2
+                theta_d = pd_disp.random(); % The next degradation time
+                theta_r = pd_t_r.random(); % The next recovery time
+                if theta_d < theta_r % If next transition is degradation
+                    theta = theta_d;
                     t_next = t_cur + theta; % Calculate the event occurrence tiem
-                    if t_next > t(i) % Beyond evaluation horizon
-                        t_cur = t(i);
-                        count_0 = count_0 + 1;
+                    if t_next > evaluation_horizon % Beyond evaluation horizon
+                        t_cur = evaluation_horizon;                                               
+                                            
+                        temp_sample_path(index) = state;
+                        temp_sample_jump_time(index) = t_cur;
                         break;
                     else
                         t_cur = t_next;
-                        % Decide what is the next state
-                        is_large_damage = binornd(1,p_large);
-                        is_fail_sb = binornd(1,pd_t_f_s.cdf(t_cur));                     
-                        if is_large_damage == 1 % If large damage happens
-                            state = 3; % Absorption state
-                        else
-                            if is_fail_sb == 1 % If safety barrier fails
-                                state = 2; % Degradation state
-                            else % If safety barrier is OK
-                                state = 1; % Dummy state 0
-                            end
-                        end                            
+                        state = 3;                        
+                                            
+                        temp_sample_path(index) = state;
+                        temp_sample_jump_time(index) = t_cur;
                     end
-                case 1 % Dummy perfect state: it is equivalant to the perfect state
-                    theta = pd_disp.random(); % Interarrival time
+                else % If next state is recovery
+                    theta = theta_r;
                     t_next = t_cur + theta; % Calculate the event occurrence tiem
-                    if t_next > t(i) % Beyond evaluation horizon
-                        t_cur = t(i);
-                        count_1 = count_1 + 1;
+                    if t_next > evaluation_horizon % Beyond evaluation horizon
+                        t_cur = evaluation_horizon;                      
+                                            
+                        temp_sample_path(index) = state;
+                        temp_sample_jump_time(index) = t_cur;
                         break;
                     else
                         t_cur = t_next;
-                        % Decide what is the next state
-                        is_large_damage = binornd(1,p_large);
-                        is_fail_sb = binornd(1,pd_t_f_s.cdf(t_cur));                     
-                        if is_large_damage == 1 % If large damage happens
-                            state = 3; % Absorption state
-                        else
-                            if is_fail_sb == 1 % If safety barrier fails
-                                state = 2; % Degradation state
-                            else % If safety barrier is OK
-                                state = 0; % Dummy state 0
-                            end
-                        end                            
+                        state = 0;
+                                            
+                        temp_sample_path(index) = state;
+                        temp_sample_jump_time(index) = t_cur;
                     end
-                case 2
-                    theta_d = pd_disp.random(); % The next degradation time
-                    theta_r = pd_t_r.random(); % The next recovery time
-                    if theta_d < theta_r % If next transition is degradation
-                        theta = theta_d;
-                        t_next = t_cur + theta; % Calculate the event occurrence tiem
-                        if t_next > t(i) % Beyond evaluation horizon
-                            t_cur = t(i);
-                            count_2 = count_2 + 1;
-                            break;
-                        else
-                            t_cur = t_next;
-                            state = 3;
-                        end
-                    else % If next state is recovery
-                        theta = theta_r;
-                        t_next = t_cur + theta; % Calculate the event occurrence tiem
-                        if t_next > t(i) % Beyond evaluation horizon
-                            t_cur = t(i);
-                            count_2 = count_2 + 1;
-                            break;
-                        else
-                            t_cur = t_next;
-                            state = 0;
-                        end
-                    end
-                case 3
-                    t_cur = t(i);
-                    count_3 = count_3 + 1;
-                    break;                    
-                otherwise
-                    error('Undefined state!')
-            end            
-        end       
+                end
+            case 3
+                t_cur = evaluation_horizon;                             
+
+                temp_sample_path(index) = state;
+                temp_sample_jump_time(index) = t_cur;
+                break;                    
+            otherwise
+                error('Undefined state!')
+        end            
     end
-    p_t_ref(1,i) = count_0/ns;
-    p_t_ref(2,i) = count_1/ns;
-    p_t_ref(3,i) = count_2/ns;
-    p_t_ref(4,i) = count_3/ns;
+    
+    temp_sample_path = temp_sample_path(1:index);
+    temp_sample_jump_time = temp_sample_jump_time(1:index);
+    sample_path{j} = temp_sample_path;
+    sample_jump_time{j} = temp_sample_jump_time;
 end
+
+%% Post processing.
+for i = 1:length(t)
+    tt = t(i);
+    count = zeros(1,4);
+    for j = 1:ns
+        temp_sample_path = sample_path{j};
+        temp_sample_jump_time = sample_jump_time{j};
+        
+        index = find(temp_sample_jump_time<tt,1,'last');
+        count(temp_sample_path(index)+1) = count(temp_sample_path(index)+1) + 1;        
+    end
+    p_t_ref(:,i) = transpose(count/ns);
+end
+
 
 elapsed_time_1 = toc;
 
@@ -143,7 +189,6 @@ hold on
 
 %% Simulate using holding time distribution and embedded chain. Sampling with rejection method.
 load('inv_cdf.mat','inv_cdf_f_02', 'inv_cdf_f_20');
-ns = 1e5;
 % Define the embedded chain and the holding time dist.
 pi_0 = [1,0,0,0]; % Initial distribution
 

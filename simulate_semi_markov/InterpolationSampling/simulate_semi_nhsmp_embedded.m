@@ -78,10 +78,20 @@ function [y, tau] = simulate_semi_nhsmp_embedded(ns, max_n_jump, evaluation_hori
             % Calcualte the transition probabilty matrix.
             cal_p_tr = cal_p{unique_state(i)};    
             p_tran = cal_p_tr(temp_tau_cur);
-
+            
             % Generate next state.
             temp_y_next = generate_y_next(p_tran);
 
+            % Handle unexceptions: temp_y_next might be 0, which is caused
+            % by the fact that the tau is beyond the range of the trained
+            % surrogate model for the inverse CDF. Solution: replace these
+            % points with the censoring state. The difference between these
+            % states and the true cencoring states is that in this case,
+            % the tau is not evaluation horizon.
+            if min(temp_y_next) == 0                
+                temp_y_next(temp_y_next==0) = n_state+1;
+            end
+            
             % Simulate holding time.
             temp_theta = ...
                 generate_theta(temp_y_next, temp_tau_cur, inv_F_t, unique_state(i)); 
@@ -124,7 +134,7 @@ function temp_theta = generate_theta(temp_y_next, temp_tau_cur, inv_F_t, current
         n_range_local = length(range_local);
         
         % Get the inverse cdf handle.
-        handle_inv_F_t = inv_F_t{current_state, us_temp_y_next(j)};
+        handle_inv_F_t = inv_F_t{current_state, us_temp_y_next(j)};           
 
         % Generate samples.
         u = rand(n_range_local,1);
