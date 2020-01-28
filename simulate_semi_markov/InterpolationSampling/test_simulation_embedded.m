@@ -7,7 +7,8 @@
 %            State 1: Dummy perfect state.
 %            State 2: Performance degradation.
 %            State 3: Total failure (absorption state).
-% Last edit: 20191223 - Created by ZZ
+% Last edit: 20200128 - Add comments.
+%            20191223 - Created by ZZ
 clear; clc;
 %% Parameter definition
 % First arrival time of the disruptive event
@@ -27,12 +28,126 @@ t = linspace(.1,evaluation_horizon,10); % Evaluate time
 
 ns = 1e5; % Sample size
 
+%% Create benchmark
+p_t_ref = zeros(4,length(t)); % p(t): 4*1, each column corresponds to one state
+
+tic;
+for i = 1:length(t)
+    fprintf('%d/%d\n',i,length(t));
+    count_0 = 0; count_1 = 0; count_2 = 0; count_3 = 0; % Counter for ending at each state
+    for j = 1:ns
+        t_cur = 0; % Initial value of time
+        state = 0; % Start from working
+        while 1
+            switch state
+                case 0 % If current state is perfect state
+                    theta = pd_disp.random(); % Interarrival time
+                    t_next = t_cur + theta; % Calculate the event occurrence tiem
+                    if t_next > t(i) % Beyond evaluation horizon
+                        t_cur = t(i);
+                        count_0 = count_0 + 1;
+                        break;
+                    else
+                        t_cur = t_next;
+                        % Decide what is the next state
+                        is_large_damage = binornd(1,p_large);
+                        is_fail_sb = binornd(1,pd_t_f_s.cdf(t_cur));                     
+                        if is_large_damage == 1 % If large damage happens
+                            state = 3; % Absorption state
+                        else
+                            if is_fail_sb == 1 % If safety barrier fails
+                                state = 2; % Degradation state
+                            else % If safety barrier is OK
+                                state = 1; % Dummy state 0
+                            end
+                        end                            
+                    end
+                case 1 % Dummy perfect state: it is equivalant to the perfect state
+                    theta = pd_disp.random(); % Interarrival time
+                    t_next = t_cur + theta; % Calculate the event occurrence tiem
+                    if t_next > t(i) % Beyond evaluation horizon
+                        t_cur = t(i);
+                        count_1 = count_1 + 1;
+                        break;
+                    else
+                        t_cur = t_next;
+                        % Decide what is the next state
+                        is_large_damage = binornd(1,p_large);
+                        is_fail_sb = binornd(1,pd_t_f_s.cdf(t_cur));                     
+                        if is_large_damage == 1 % If large damage happens
+                            state = 3; % Absorption state
+                        else
+                            if is_fail_sb == 1 % If safety barrier fails
+                                state = 2; % Degradation state
+                            else % If safety barrier is OK
+                                state = 0; % Dummy state 0
+                            end
+                        end                            
+                    end
+                case 2
+                    theta_d = pd_disp.random(); % The next degradation time
+                    theta_r = pd_t_r.random(); % The next recovery time
+                    if theta_d < theta_r % If next transition is degradation
+                        theta = theta_d;
+                        t_next = t_cur + theta; % Calculate the event occurrence tiem
+                        if t_next > t(i) % Beyond evaluation horizon
+                            t_cur = t(i);
+                            count_2 = count_2 + 1;
+                            break;
+                        else
+                            t_cur = t_next;
+                            state = 3;
+                        end
+                    else % If next state is recovery
+                        theta = theta_r;
+                        t_next = t_cur + theta; % Calculate the event occurrence tiem
+                        if t_next > t(i) % Beyond evaluation horizon
+                            t_cur = t(i);
+                            count_2 = count_2 + 1;
+                            break;
+                        else
+                            t_cur = t_next;
+                            state = 0;
+                        end
+                    end
+                case 3
+                    t_cur = t(i);
+                    count_3 = count_3 + 1;
+                    break;                    
+                otherwise
+                    error('Undefined state!')
+            end            
+        end       
+    end
+    p_t_ref(1,i) = count_0/ns;
+    p_t_ref(2,i) = count_1/ns;
+    p_t_ref(3,i) = count_2/ns;
+    p_t_ref(4,i) = count_3/ns;
+end
+
+elapsed_time_1 = toc;
+
+% Display results
+h_p_1 = figure();
+plot(t,p_t_ref(1,:),'-o')
+hold on
+h_p_2 = figure();
+plot(t,p_t_ref(2,:),'-o')
+hold on
+h_p_3 = figure();
+plot(t,p_t_ref(3,:),'-o')
+hold on
+h_p_4 = figure();
+plot(t,p_t_ref(4,:),'-o')
+hold on
+
 %% Simulate using holding time distribution and embedded chain. Sampling with rejection method.
 load('inv_cdf.mat','inv_cdf_f_02', 'inv_cdf_f_20');
-
+ns = 1e5;
 % Define the embedded chain and the holding time dist.
 pi_0 = [1,0,0,0]; % Initial distribution
 
+% Elements in the transition probability matrix
 p_01 = @(tau) (-0.887024E-1).*exp(1).^((1/1000).*tau).*...
     ((-0.1E1)+erf((1/100).*(5+tau)));
 p_02 = @(tau) 0.9984E0+0.887024E-1.*exp(1).^((1/1000).*tau).*((-0.1E1)+...
@@ -45,7 +160,9 @@ p_13 = p_03;
 p_20 = @(tau) .999114*ones(size(tau));
 p_23 = @(tau) 1 - p_20(tau);
 
-% Transition probability for state 1
+% Handles to the transition probability matrix for each state: Returns a
+% n_t*4 matrix, where each row is the transition probability vector
+% p_{i,j}, j = 0,1,2,3, and the column represents the current time tau.
 cal_p_tr_0 = @(tau) [zeros(size(tau)), p_01(tau), p_02(tau), p_03(tau)];
 cal_p_tr_1 = @(tau) [p_01(tau), zeros(size(tau)), p_02(tau), p_03(tau)];
 cal_p_tr_2 = @(tau) [p_20(tau), zeros(size(tau)), zeros(size(tau)), p_23(tau)];
@@ -53,7 +170,7 @@ cal_p_tr_3 = @(tau) [zeros(size(tau)), zeros(size(tau)),...
     zeros(size(tau)), ones(size(tau))];
 cal_p = {cal_p_tr_0, cal_p_tr_1, cal_p_tr_2, cal_p_tr_3};
 
-% Inverse functions of the CDF.
+% Inverse functions of the holding time distribution CDF.
 inv_01 = @(p,tau) -5 - tau + 100*erfinv(p + (1-p).*erf(.05+.01*tau));
 inv_23 = @(p,tau) (-1 + 2000*erfinv(p + erf(1/2000) - p.*erf(1/2000)))/2000;
 inv_03 = @(p,tau) -1e3*log(1-p);
@@ -70,45 +187,44 @@ inv_F_t = {handle_zero, inv_01, inv_02, inv_03;...
 % Calculate the same probability distribution
 fprintf('\n Embedded chain approach\n')
 n_state = 4;
-p_t_sim = zeros(n_state,length(t)); % p(t): 4*1, each column corresponds to one state
-
-n_jump = 15;
+p_t_int = zeros(n_state,length(t)); % p(t): 4*1, each column corresponds to one state
+max_n_jump = 15; % The maximum number of jumps considered.
 
 tic;
-
-[y, tau] = simulate_semi_nhsmp_embedded(ns, n_jump, evaluation_horizon, ...
+% y and tau are matrix with dimension ns*(n_jump+1).
+% Row of y represents the state after each jump, from 0 (initial values) to n_jump.
+% Row of tau represents the occurrence time after each jump.
+[y, tau] = simulate_semi_nhsmp_embedded(ns, max_n_jump, evaluation_horizon, ...
     pi_0, cal_p, inv_F_t);
+y_transpose = y';
 
+% Post-processing: Get the probability for each time epoch.
 for i = 1:length(t)
     tt = t(i);
-    p_tt_j = zeros(n_state,1);
     
-    % n(t) = 0.
-    j = 1;
-    index_tt = find(tau(:,j+1)>=tt);
-    tau_tt = tau(index_tt,j);
-    y_tt = y(index_tt,j);
+    % The last element in each row, where tau<tt
+    offset_y = findfirst(tau<tt, 2, 1, 'last');
+    loc_y = transpose(0:ns-1)*(max_n_jump+1) + offset_y;    
+    
+    % Get state at tt
+    y_tt = y_transpose(loc_y);
+    
+    % Count numbers at each state and calculate the probability.
     bin_edge = 1:n_state+1;
-    p_tt_j = p_tt_j + transpose(histcounts(y_tt, bin_edge))/n_jump/ns;
-    
-    for j = 2:n_jump+1
-        index_tt = find(tau(:,j)<tt);
-        if isempty(index_tt)
-            break;
-        else
-            tau_tt = tau(index_tt,j);
-            y_tt = y(index_tt,j);
-            bin_edge = 1:n_state+1;
-            p_tt_j = p_tt_j + transpose(histcounts(y_tt, bin_edge))/n_jump/ns;        
-        end
-    end
-    p_t_sim(:,i) = p_tt_j;
+    p_t_int(:,i) = transpose(histcounts(y_tt, bin_edge))/ns;
 end
 
-toc
+elapsed_time_2 = toc;
 
+% Display results
+figure(h_p_1);
+plot(t,p_t_int(1,:),'-dr')
+figure(h_p_2);
+plot(t,p_t_int(2,:),'-dr')
+figure(h_p_3);
+plot(t,p_t_int(3,:),'-dr')
+figure(h_p_4);
+plot(t,p_t_int(4,:),'-dr')
 
- 
-    
-
-
+fprintf('The elapsed time for 1 is %f seconds\n',elapsed_time_1);
+fprintf('The elapsed time for 2 is %f seconds\n',elapsed_time_2); 
