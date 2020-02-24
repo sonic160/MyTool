@@ -6,9 +6,9 @@
 %        pi_0_old - Initial distribution.
 %        cal_p_old - A cell matrix that contains handles for caluculating
 %                    P_ij(tau). The handle takes only one input of tau.
-%        inv_F_t_old - A cell matrix that contains handles for calculating
-%                    the inverse CDF of the holding time distribution F_ij.
-%                    The handle takes two inputs, p and tau.
+%        rnd_matrix_theta_old - A cell matrix that contains handles for
+%        generating random numbers from the holding time distribution f_ij.
+%        The random number generator takes only one input, which is tau.
 % Outputs: y - A ns*(n_jump+1) matrix. Each row is one sample path. Each column
 %              is a sample.
 %          tau - The same dimension as y, containing the time for the jump.
@@ -17,7 +17,7 @@
 %                evaluation horizon.
 
 function [y, tau] = simulate_semi_nhsmp_embedded(ns, max_n_jump, evaluation_horizon,...
-    pi_0_old, cal_p_old, inv_F_t_old)
+    pi_0_old, cal_p_old, rnd_matrix_theta_old)
     %% Add a virtual state (the last one) to represent right censored data when t>evaluation horizon.
     n_state = length(pi_0_old);
     pi_0 = [pi_0_old, 0];
@@ -33,18 +33,18 @@ function [y, tau] = simulate_semi_nhsmp_embedded(ns, max_n_jump, evaluation_hori
     cal_p{n_state+1} = @(tau) [zeros(length(tau),n_state), ones(size(tau))];
 
     % When it enters the censored state, the holding time will be zero.
-    inv_F_t = cell(n_state+1, n_state+1);
+    rnd_matrix_theta = cell(n_state+1, n_state+1);
     for i = 1:n_state
         for j = 1:n_state
-            inv_F_t{i,j} = inv_F_t_old{i,j};
+            rnd_matrix_theta{i,j} = rnd_matrix_theta_old{i,j};
         end
     end
-    handle_zero = @(p,tau) 0;
+    handle_zero = @(tau) 0;
     for j = 1:n_state
-        inv_F_t{j, n_state+1} = handle_zero;
-        inv_F_t{n_state+1, j} = handle_zero;
+        rnd_matrix_theta{j, n_state+1} = handle_zero;
+        rnd_matrix_theta{n_state+1, j} = handle_zero;
     end
-    inv_F_t{n_state+1, n_state+1} = handle_zero;
+    rnd_matrix_theta{n_state+1, n_state+1} = handle_zero;
 
     %% Inital states of the embedded chain.
     tau = zeros(ns, max_n_jump+1); % Cumulative times at transitions.
@@ -94,7 +94,7 @@ function [y, tau] = simulate_semi_nhsmp_embedded(ns, max_n_jump, evaluation_hori
             
             % Simulate holding time.
             temp_theta = ...
-                generate_theta(temp_y_next, temp_tau_cur, inv_F_t, unique_state(i)); 
+                generate_theta(temp_y_next, temp_tau_cur, rnd_matrix_theta, unique_state(i)); 
 
             % Update the current state and time
             y_cur(loc_labels(i):loc_labels(i)+length(temp_y_next)-1) = temp_y_next;
@@ -118,7 +118,12 @@ function [y, tau] = simulate_semi_nhsmp_embedded(ns, max_n_jump, evaluation_hori
 end
 
 % This subfunction generates the holding time.
-function temp_theta = generate_theta(temp_y_next, temp_tau_cur, inv_F_t, current_state)
+% Input: rnd_matrix_theta is a handle matrix, whose rnd_theta(i,j) gives a hanlde
+%        to a random number generate of a holiding time from i to j.
+%        Calling format: rnd_theta = rnd_matrix_theta{i,j}; 
+%                        holing_time = rnd_theta(tau), returns a vector the same size as
+%                        tau, which contains the holding time from i to j.
+function temp_theta = generate_theta(temp_y_next, temp_tau_cur, rnd_matrix_theta, current_state)
     n_range = length(temp_y_next); % Get the number of samples in this block.
     
     % Rearrange y_cur and tau_cur. Gather the same states together.
@@ -130,15 +135,11 @@ function temp_theta = generate_theta(temp_y_next, temp_tau_cur, inv_F_t, current
     % Generate the random number.
     temp_theta = zeros(n_range,1);
     for j = 1:length(us_temp_y_next)
-        range_local = ia_temp_y_next(j):(ia_temp_y_next(j+1)-1);
-        n_range_local = length(range_local);
-        
+        range_local = ia_temp_y_next(j):(ia_temp_y_next(j+1)-1);               
         % Get the inverse cdf handle.
-        handle_inv_F_t = inv_F_t{current_state, us_temp_y_next(j)};           
-
+        handle_rnd_theta = rnd_matrix_theta{current_state, us_temp_y_next(j)};           
         % Generate samples.
-        u = rand(n_range_local,1);
-        temp_theta(range_local) = handle_inv_F_t(u,temp_tau_cur(range_local));
+        temp_theta(range_local) = handle_rnd_theta(temp_tau_cur(range_local));
     end
     
     % Reorder the generated theta to make it follow the original order.

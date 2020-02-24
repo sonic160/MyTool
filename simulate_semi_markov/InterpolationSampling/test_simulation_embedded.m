@@ -215,18 +215,14 @@ cal_p_tr_3 = @(tau) [zeros(size(tau)), zeros(size(tau)),...
     zeros(size(tau)), ones(size(tau))];
 cal_p = {cal_p_tr_0, cal_p_tr_1, cal_p_tr_2, cal_p_tr_3};
 
-% Inverse functions of the holding time distribution CDF.
-inv_01 = @(p,tau) -5 - tau + 100*erfinv(p + (1-p).*erf(.05+.01*tau));
-inv_23 = @(p,tau) (-1 + 2000*erfinv(p + erf(1/2000) - p.*erf(1/2000)))/2000;
-inv_03 = @(p,tau) -1e3*log(1-p);
+% Random number generator of the holding times.
+rnd_theta_02 = @(tau) rnd_theta_02_cal(tau,inv_cdf_f_02);
+rnd_theta_20 = @(tau) rnd_theta_20_cal(tau,inv_cdf_f_20);
 
-inv_02 = @(p,tau) inv_cdf_f_02([p,tau]);
-inv_20 = @(p,tau) inv_cdf_f_20(p);
-
-handle_zero = @(p,tau) 0;
-inv_F_t = {handle_zero, inv_01, inv_02, inv_03;...
-    inv_01, handle_zero, inv_02, inv_03;...
-    inv_20, handle_zero, handle_zero, inv_23;...
+handle_zero = @(tau) zeros(size(tau));
+rnd_matrix_theta = {handle_zero, @rnd_theta_01, rnd_theta_02, @rnd_theta_03;...
+    @rnd_theta_01, handle_zero, rnd_theta_02, @rnd_theta_03;...
+    rnd_theta_20, handle_zero, handle_zero, @rnd_theta_23;...
     handle_zero, handle_zero, handle_zero,handle_zero};
 
 % Calculate the same probability distribution
@@ -240,7 +236,7 @@ tic;
 % Row of y represents the state after each jump, from 0 (initial values) to n_jump.
 % Row of tau represents the occurrence time after each jump.
 [y, tau] = simulate_semi_nhsmp_embedded(ns, max_n_jump, evaluation_horizon, ...
-    pi_0, cal_p, inv_F_t);
+    pi_0, cal_p, rnd_matrix_theta);
 y_transpose = y';
 
 % Post-processing: Get the probability for each time epoch.
