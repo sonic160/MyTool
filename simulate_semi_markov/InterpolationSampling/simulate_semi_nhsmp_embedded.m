@@ -63,18 +63,16 @@ function [y, tau] = simulate_semi_nhsmp_embedded(ns, max_n_jump, evaluation_hori
     tau_cur = tau_initial;
 
     for i_jump = 2:max_n_jump+1
-        % Rearrange y_cur and tau_cur. Gather the same states together.
-        [y_cur, index_y] = sort(y_cur);
-        tau_cur = tau_cur(index_y);    
-        [unique_state, ia, ~] = unique(y_cur);
-        loc_labels = [ia; ns+1];
-
-        % Do a loop for each state:
+        % Get unique current states.  
+        unique_state = unique(y_cur);
+        y_next = y_cur;
+        
+        % Do a loop for each unique state:
         for i = 1:length(unique_state)
-            % Get the parts associated with each state.
-            range = loc_labels(i):(loc_labels(i+1)-1);
-            temp_tau_cur = tau_cur(range);
-
+            % Find the tau associated with each unique state.
+            index = (y_cur==unique_state(i));
+            temp_tau_cur = tau_cur(index);
+            
             % Calcualte the transition probabilty matrix.
             cal_p_tr = cal_p{unique_state(i)};    
             p_tran = cal_p_tr(temp_tau_cur);
@@ -97,17 +95,15 @@ function [y, tau] = simulate_semi_nhsmp_embedded(ns, max_n_jump, evaluation_hori
                 generate_theta(temp_y_next, temp_tau_cur, rnd_matrix_theta, unique_state(i)); 
 
             % Update the current state and time
-            y_cur(loc_labels(i):loc_labels(i)+length(temp_y_next)-1) = temp_y_next;
-            tau_cur(loc_labels(i):loc_labels(i)+length(temp_y_next)-1) = ...
+            y_next(index) = temp_y_next;
+            tau_cur(index) = ...
                 temp_tau_cur + temp_theta;
         end
-
-        % Reorder y and tau
-        y_cur(index_y) = y_cur;
-        tau_cur(index_y) = tau_cur;
+        % Update the current state and time
+        y_cur = y_next;
         
         % Check the termination time.
-        ind_out = find(tau_cur>evaluation_horizon);
+        ind_out = (tau_cur>evaluation_horizon);
         tau_cur(ind_out) = evaluation_horizon;
         y_cur(ind_out) = n_state+1;
             
@@ -124,26 +120,19 @@ end
 %                        holing_time = rnd_theta(tau), returns a vector the same size as
 %                        tau, which contains the holding time from i to j.
 function temp_theta = generate_theta(temp_y_next, temp_tau_cur, rnd_matrix_theta, current_state)
-    n_range = length(temp_y_next); % Get the number of samples in this block.
-    
-    % Rearrange y_cur and tau_cur. Gather the same states together.
-    [temp_y_next, ind_sort_temp_y_next] = sort(temp_y_next);
-    temp_tau_cur = temp_tau_cur(ind_sort_temp_y_next);
-    [us_temp_y_next, ia_temp_temp_y_next, ~] = unique(temp_y_next);
-    ia_temp_y_next = [ia_temp_temp_y_next; n_range+1];
+    n_range = length(temp_y_next); % Get the number of samples in this block.    
+    % Get unique states in the next states.
+    us_temp_y_next = unique(temp_y_next);
     
     % Generate the random number.
     temp_theta = zeros(n_range,1);
-    for j = 1:length(us_temp_y_next)
-        range_local = ia_temp_y_next(j):(ia_temp_y_next(j+1)-1);               
+    for j = 1:length(us_temp_y_next)             
         % Get the inverse cdf handle.
         handle_rnd_theta = rnd_matrix_theta{current_state, us_temp_y_next(j)};           
         % Generate samples.
-        temp_theta(range_local) = handle_rnd_theta(temp_tau_cur(range_local));
-    end
-    
-    % Reorder the generated theta to make it follow the original order.
-    temp_theta(ind_sort_temp_y_next) = temp_theta;
+        index = (temp_y_next==us_temp_y_next(j));
+        temp_theta(index) = handle_rnd_theta(temp_tau_cur(index));
+    end    
 end
 
 
