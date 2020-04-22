@@ -119,12 +119,18 @@ function [y, tau] = all_reach_end(ns, jump_lim, evaluation_horizon,...
             % states and the true cencoring states is that in this case,
             % the tau is not evaluation horizon.
             if min(temp_y_next) == 0                
-                temp_y_next(temp_y_next==0) = n_state+1;
+%                 temp_y_next(temp_y_next==0) = n_state+1;
+                error('Invalid value of y_next generated!');
             end
             
             % Simulate holding time.
             temp_theta = ...
-                generate_theta(temp_y_next, temp_tau_cur, rnd_matrix_theta, unique_state(i)); 
+                generate_theta(temp_y_next, temp_tau_cur, rnd_matrix_theta, unique_state(i));
+            % Handle exceptions: temp_theta might be nan, if the simulation
+            % is out of the boundary of the training data.
+            if max(isnan(temp_theta)) > 0
+                error('Invalid value of theta generated!');
+            end
 
             % Update the current state and time
             y_next(index) = temp_y_next;
@@ -152,7 +158,7 @@ function [y, tau] = all_reach_end(ns, jump_lim, evaluation_horizon,...
         end            
     end
     % If jump_lim is reached: Ask to increase jump_lim
-    error('Not all sample paths reached the evaluation horizon.\n Jump_lim too small!')
+    error('Not all sample paths reached the evaluation horizon. Jump_lim too small!')
 end
 
 % This is the case where max_n_jump>=0: Simulate max_n_jump jumps.
@@ -227,13 +233,19 @@ function [y, tau] = use_max_n_jump(ns, max_n_jump, evaluation_horizon,...
             % states and the true cencoring states is that in this case,
             % the tau is not evaluation horizon.
             if min(temp_y_next) == 0                
-                temp_y_next(temp_y_next==0) = n_state+1;
+%                 temp_y_next(temp_y_next==0) = n_state+1;
+                error('Invalid value of y_next generated!');
             end
             
             % Simulate holding time.
             temp_theta = ...
                 generate_theta(temp_y_next, temp_tau_cur, rnd_matrix_theta, unique_state(i)); 
-
+            % Handle exceptions: temp_theta might be nan, if the simulation
+            % is out of the boundary of the training data.
+            if max(isnan(temp_theta)) > 0
+                error('Invalid value of theta generated!');
+            end
+            
             % Update the current state and time
             y_next(index) = temp_y_next;
             tau_cur(index) = ...
