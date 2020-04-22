@@ -7,8 +7,12 @@
 %        cal_p_old - A cell matrix that contains handles for caluculating
 %                    P_ij(tau). The handle takes only one input of tau.
 %        rnd_matrix_theta_old - A cell matrix that contains handles for
-%        generating random numbers from the holding time distribution f_ij.
-%        The random number generator takes only one input, which is tau.
+%          generating random numbers from the holding time distribution f_ij.
+%          The random number generator takes only one input, which is tau.
+%        jump_lim: Optional when max_n_jump == -1. jump_lim defines the
+%          maximal number of jumps allowed. The simulation is continued until
+%          all the sample paths reached evaluation horizon, or jump_lim is
+%          reached. Default value: 1e3.
 % Outputs: y - A ns*(n_jump+1) matrix. Each row is one sample path. Each column
 %              is a sample.
 %          tau - The same dimension as y, containing the time for the jump.
@@ -17,25 +21,33 @@
 %                evaluation horizon.
 
 function [y, tau] = simulate_semi_nhsmp_embedded(ns, max_n_jump, evaluation_horizon,...
-    pi_0_old, cal_p_old, rnd_matrix_theta_old)
+    pi_0_old, cal_p_old, rnd_matrix_theta_old, jump_lim)
     if max_n_jump == -1 % Do not use max_n_jump: simulate until all the sample paths reach evaluation horizon.
         non_exceed_rate = 0; % This parameter controls how many sample paths that do not exceed evaluation_horizon are allowed.
-        [y, tau] = all_reach_end(ns, max_n_jump, evaluation_horizon,...
+        % Reset maximal number of jumps: to avoid dead lock.
+        if nargin < 7 % If jump_lim is not given.
+            jump_lim = 1e3; % Use its default value.
+        end
+        % Run simulation: All paths need to reach the end
+        [y, tau] = all_reach_end(ns, jump_lim, evaluation_horizon,...
             pi_0_old, cal_p_old, rnd_matrix_theta_old,non_exceed_rate);
     else
-        if max_n_jump >= 0
+        if max_n_jump >= 0 % Simulate only max_n_jump jumps.
             [y, tau] = use_max_n_jump(ns, max_n_jump, evaluation_horizon,...
                 pi_0_old, cal_p_old, rnd_matrix_theta_old);
         else
-            error('max_n_jump should be a positive number.');
+            error('max_n_jump value invalid!');
         end
     end            
 end
 
-% This is the case where max_n_jump>=0: Simulate max_n_jump jumps.
-function [y, tau] = all_reach_end(ns, ~, evaluation_horizon,...
+% This is the case where max_n_jump<0: Run the simulation, until all the
+% sample paths reach evaluation_horizon,  or the number of jumps reaches
+% jump_lim.
+% Inputs and outputs have the same meaning as the main function.
+function [y, tau] = all_reach_end(ns, jump_lim, evaluation_horizon,...
     pi_0_old, cal_p_old, rnd_matrix_theta_old,non_exceed_rate)
-    max_n_jump = 20; % Reset maximal number of jumps: to avoid dead lock.
+    max_n_jump = jump_lim; % Rest the max_n_jump. Now it is a upper limit.
     index_non_exceed = transpose(1:ns); % Set of indexes of the sample paths that do not exceed evaluation_horizon.
     
     %% Add a virtual state (the last one) to represent right censored data when t>evaluation horizon.
@@ -136,9 +148,11 @@ function [y, tau] = all_reach_end(ns, ~, evaluation_horizon,...
         if length(index_non_exceed) <= ns*non_exceed_rate
             y = y(:,1:i_jump);
             tau = tau(:,1:i_jump);
-            break;
+            return;
         end            
     end
+    % If jump_lim is reached: Ask to increase jump_lim
+    error('Not all sample paths reached the evaluation horizon.\n Jump_lim too small!')
 end
 
 % This is the case where max_n_jump>=0: Simulate max_n_jump jumps.
