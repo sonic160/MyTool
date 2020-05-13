@@ -18,12 +18,6 @@ pd_t_r = makedist('weibull','a',eta_r,'b',beta_r);
 evaluation_horizon = 1e3;
 t = linspace(.1,evaluation_horizon,10); % Evaluate time
 
-r = [4,3,2,1];
-y_th = 3000;
-F_nuit = zeros(1,length(t));
-
-ns = 1e6; % Sample size
-
 % Elements of f_ij
 f_01 = @(x,tau) -lambda_D.*exp(-lambda_D.*x).*exp(-((tau + x)/eta_s).^beta_s).*(p_large - 1);
 f_02 = @(x,tau) lambda_D.*exp(-lambda_D.*x).*(exp(-((tau + x)/eta_s).^beta_s) - 1).*(p_large - 1);
@@ -31,12 +25,16 @@ f_03 = @(x,tau) lambda_D.*p_large.*exp(-lambda_D.*x);
 f_20 = @(x,tau) (beta_r.*exp(-(x./eta_r).^beta_r).*exp(-lambda_D.*x).*(x./eta_r).^(beta_r - 1))./eta_r;
 f_23 = @(x,tau) lambda_D.*exp(-(x./eta_r).^beta_r).*exp(-lambda_D.*x);
 
-cal_f_0 = @(x,tau) [zeros(size(tau)), f_01(x,tau), f_02(x,tau), f_03(x,tau)];
-cal_f_1 = @(x,tau) [f_01(x,tau), zeros(size(tau)), f_02(x,tau), f_03(x,tau)];
-cal_f_2 = @(x,tau) [f_20(x,tau), zeros(size(tau)), zeros(size(tau)), f_23(x,tau)];
-cal_f_3 = @(x,tau) [zeros(size(tau)), zeros(size(tau)),...
-    zeros(size(tau)), zeros(size(tau))];
-cal_d_Q = @(x,tau) [cal_f_0(x,tau); cal_f_1(x,tau); cal_f_2(x,tau); cal_f_3(x,tau)];
+cal_Q_01 = @(x,tau) integral(@(t)f_01(t,tau),0,x);
+cal_Q_02 = @(x,tau) integral(@(t)f_02(t,tau),0,x);
+cal_Q_03 = @(x,tau) integral(@(t)f_03(t,tau),0,x);
+cal_Q_20 = @(x,tau) integral(@(t)f_20(t,tau),0,x);
+cal_Q_23 = @(x,tau) integral(@(t)f_23(t,tau),0,x);
+
+cal_Q = @(x,tau) [0,cal_Q_01(x,tau),cal_Q_02(x,tau),cal_Q_03(x,tau);...
+    cal_Q_01(x,tau),0,cal_Q_02(x,tau),cal_Q_03(x,tau);...
+    cal_Q_20(x,tau),0,0,cal_Q_23(x,tau);...
+    0,0,0,1];
 
 % D
 cal_D = @(x,tau) diag([exp(-lambda_D.*x),...
@@ -47,9 +45,9 @@ cal_D = @(x,tau) diag([exp(-lambda_D.*x),...
 %% Do the numerical integration.
 % Write in para.
 para.pi_0 = [1,0,0,0]; % Initial distribution
-para.cal_d_Q = cal_d_Q;
+para.cal_Q = cal_Q;
 para.cal_D = cal_D;
-Delta = .1;
+Delta = 1;
 
 % Run the simulation.
 state_probability = cal_state_p_numerical_int(evaluation_horizon,Delta,para)
