@@ -10,7 +10,7 @@
 % Last edit: 20200128 - Add comments.
 %            20191223 - Created by ZZ
 clear; clc;
-addpath('./')
+addpath('../')
 %% Parameter definition
 % First arrival time of the disruptive event
 lambda_D = 1e-3;

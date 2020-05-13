@@ -14,7 +14,7 @@ for i = 1:5
 end
 r = [5,2,4,5,4]; % Reward matrix
 % Algorithm parameters
-Delta = 1/32; % Step size
+Delta = 1/64; % Step size
 x_max = 110; % Limit x values
 T_max = 25; % Time limit
 % Defining the structure para

@@ -51,7 +51,7 @@ for t_cur = 2:n_t
         ind_S_prev = find(f_appr(ind_y_prev,:,t_prev)); % Locate the state with non zero pdf
         for S_prev = ind_S_prev % Consider the states one by one
             for S_cur = 1:n_state % It can jump to n_state possible states
-                ind_y_cur = ind_y_prev + r(S_cur); % Update the reward
+                ind_y_cur = ind_y_prev + r(S_prev); % Update the reward
                 if S_cur == S_prev % If the transition remains in the previous state
                     if ind_y_cur > n_x
                         continue;
