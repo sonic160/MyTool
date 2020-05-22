@@ -9,67 +9,167 @@
 %                          para.r - Reward vector, a row vector that takes
 %                                   non-negtive integer values (IMPORTANT,
 %                                   must be integer).
-% Output parameter: f_appr - A n_x*n_S*n_t vector, which contains the
-%                            approximated PDF at time prior to T_max (the $f_i^\Delta(u,y)$ in Tijms and Veldman (2000).
-% Use of output: sum(sum(f_appr(:,:,end)*Delta)) gives P(O(t)<=x) (See Eq.
-% (1) of Tijms and Veldman (2000)
-% Version history: 15/01/2019: Created by ZZ
-function f_appr = CalcARFastPDF(T_max,x_max,Delta,para)
+%                   direction - Determine whether the cdf or icdf is
+%                          calculated. 'forward': calculate cdf by
+%                          integrate from 0 to x_max. 'inverse': calculate
+%                          icdf by integrate from x_max to max(r)*T_max.
+%                          Default value: 'forward'.
+% Output parameter: cdf - The cdf F(t,y<x), at T_max.
+% Version history: 20/05/2020: Optimize performance.
+%                  15/01/2019: Created by ZZ.
+
+function cdf = CalcARFastPDF(T_max,x_max,Delta,para,direction)
+if nargin == 4 % Default value for direction is 'forward'
+    direction = 'forward';
+else
+    if nargin ~= 5
+        error('Wrong input parameters!')
+    end
+end
+
+switch direction
+    case 'forward' % Forward integration: from 0 to x
+        cdf = CalcARFastPDF_forward(T_max,x_max,Delta,para);
+    case 'inverse' % Integrate from x to y_max, to calculate icdf.
+        icdf = CalcARFastPDF_inverse(T_max,x_max,Delta,para);
+        cdf = 1 - icdf;
+    otherwise
+        error('Unrecgonized direction input!')
+end
+
+end
+
+% Forward integration: from 0 to x to calculate cdf.
+function cdf = CalcARFastPDF_forward(T_max,x_max,Delta,para)
 %% Initialize parameters
 S = para.S;
-pi = para.pi;
+pi_0 = para.pi;
 Q = para.Q;
 r = para.r;
+
 %% Algorithm begin: Initialization
 n_x = floor(x_max/Delta); % Number of steps in x
 n_t = floor(T_max/Delta); % Number of steps in t
 n_state = length(S); % Number of states
-f_appr = zeros(n_x,n_state,n_t); % Initial value for the approximated pdf
-Is_eff_y = zeros(1,n_x); % This is a flag vector: 1 means the corresponding y has non zero pdf.
-%% The first time step: t = Delta
-t_cur = 1; % Current time step
-for temp_i = 1:n_x
-    for S_prev = 1:n_state
-        if temp_i == r(S_prev) % If the current y is jumped from S_prev
-            f_appr(temp_i,S_prev,t_cur) = pi(S_prev)/Delta; % Set the pdf
-            if pi(S_prev) > 0
-                Is_eff_y(temp_i) = 1; % Label the non-zero pdf
-            end
-        else
-            continue;
+% A matrix that stores the previous density f_i((k-1)\Delta,y).
+% The columns of this matrix represents each discretized point on y.
+density_matrix_prev = zeros(n_state,n_x); 
+density_matrix_cur = zeros(n_state,n_x); 
+% Calculate Q*Delta: This is a matrix whose element is what to be
+% multiplied in the numerical integration.
+Q_times_Delta = Q*Delta;
+% The main diagnose: The probablity of remaining at state i.
+for i = 1:n_state
+    Q_times_Delta(i,i) = 1+Q(i,i)*Delta;
+end
+
+%% Step zero: The intial states and initial distributions.
+for state_prev = 1:n_state
+    reward_cur = r(state_prev); % Update current reward value.
+    % Judge if current reward value already beyond evaluation
+    % threshold.
+    if reward_cur >= n_x
+        continue;
+    else
+        % Consider all the possible outbound states.
+        for state_cur = 1:n_state
+            density_matrix_prev(state_cur,reward_cur) = density_matrix_prev(state_cur,reward_cur) +...
+                pi_0(state_prev)/Delta*Q_times_Delta(state_prev,state_cur);
         end
     end
-end
-%% Begin iterative processes
+end    
+
+%% Begin iterative processes.
 for t_cur = 2:n_t
-    t_prev = t_cur - 1; % Previous time
-    % Find the possible value of y, in the previous time step
-    ind_eff_y = find(Is_eff_y); % Index for the possible y
-%     n_eff_y = length(ind_eff_y); % Number of possible y
-    Is_eff_y = zeros(1,n_x); % Set the flag vector to zero
-    for ind_y_prev = ind_eff_y % For each value of y_prev, do the one-step transition
-        ind_S_prev = find(f_appr(ind_y_prev,:,t_prev)); % Locate the state with non zero pdf
-        for S_prev = ind_S_prev % Consider the states one by one
-            for S_cur = 1:n_state % It can jump to n_state possible states
-                ind_y_cur = ind_y_prev + r(S_prev); % Update the reward
-                if S_cur == S_prev % If the transition remains in the previous state
-                    if ind_y_cur > n_x
-                        continue;
-                    else
-                        Is_eff_y(ind_y_cur) = 1;
-                        p = f_appr(ind_y_prev,S_prev,t_prev)*(1+Q(S_prev,S_prev)*Delta);
-                        f_appr(ind_y_cur,S_cur,t_cur) = f_appr(ind_y_cur,S_cur,t_cur) + p;
-                    end
-                else % If it jumps to a new state
-                    if ind_y_cur > n_x
-                        continue;
-                    else
-                        Is_eff_y(ind_y_cur) = 1;
-                        p = f_appr(ind_y_prev,S_prev,t_prev)*Q(S_prev,S_cur)*Delta;
-                        f_appr(ind_y_cur,S_cur,t_cur) = f_appr(ind_y_cur,S_cur,t_cur) + p;
-                    end                    
-                end
+    % For each row in density_matrix_prev
+    for state_prev = 1:n_state
+        % Consider only the states with non-zeros density at the previous
+        % states.
+        all_reward_prev = find(density_matrix_prev(state_prev,:)); % Take the corresponding row.       
+        for reward_prev = all_reward_prev
+            reward_cur = reward_prev + r(state_prev); % Update current reward value. Delta is scaled out. No need to consider.
+            % Judge if current reward value already beyond evaluation
+            % threshold.
+            if reward_cur >= n_x
+                continue;
+            else
+                % Consider all the outbounding states and update the current
+                % density.
+                for state_cur = 1:n_state
+                    p = density_matrix_prev(state_prev,reward_prev)*Q_times_Delta(state_prev,state_cur);
+                    density_matrix_cur(state_cur,reward_cur) = ...
+                        density_matrix_cur(state_cur,reward_cur) + p;
+                end                
             end
         end
-    end    
+    end
+    density_matrix_prev = density_matrix_cur;
+    density_matrix_cur = zeros(n_state,n_x);
+end
+cdf = sum(sum(density_matrix_prev*Delta,2));
+end
+
+% Inverse integration: from x to y_max to calculate icdf.
+% Difference compared to the previous function is that, here we calculate
+% all the values for y, all the way to y_max. But in the previous function,
+% once y is larger than x_max, no further calculation is needed (density
+% treated as zeros).
+function icdf = CalcARFastPDF_inverse(T_max,x_max,Delta,para)
+%% Initialize parameters
+S = para.S;
+pi_0 = para.pi;
+Q = para.Q;
+r = para.r;
+% Calculate y_max
+y_max = max(r)*T_max;
+
+%% Algorithm begin: Initialization
+n_y = floor(y_max/Delta); % Number of steps in x
+n_th = floor(x_max/Delta); % Lower limit of integration
+n_t = floor(T_max/Delta); % Number of steps in t
+n_state = length(S); % Number of states
+% A matrix that stores the previous density f_i((k-1)\Delta,y).
+% The columns of this matrix represents each discretized point on y.
+density_matrix_prev = zeros(n_state,n_y); 
+density_matrix_cur = zeros(n_state,n_y); 
+% Calculate Q*Delta: This is a matrix whose element is what to be
+% multiplied in the numerical integration.
+Q_times_Delta = Q*Delta;
+% The main diagnose: The probablity of remaining at state i.
+for i = 1:n_state
+    Q_times_Delta(i,i) = 1+Q(i,i)*Delta;
+end
+
+%% Step zero: The intial states and initial distributions.
+for state_prev = 1:n_state
+    reward_cur = r(state_prev); % Update current reward value.
+    % Consider all the possible outbound states.
+    for state_cur = 1:n_state
+        density_matrix_prev(state_cur,reward_cur) = density_matrix_prev(state_cur,reward_cur) +...
+            pi_0(state_prev)/Delta*Q_times_Delta(state_prev,state_cur);
+    end
+end    
+
+%% Begin iterative processes.
+for t_cur = 2:n_t
+    % For each row in density_matrix_prev
+    for state_prev = 1:n_state
+        % Consider only the states with non-zeros density at the previous
+        % states.
+        all_reward_prev = find(density_matrix_prev(state_prev,:)); % Take the corresponding row.       
+        for reward_prev = all_reward_prev
+            reward_cur = reward_prev + r(state_prev); % Update current reward value. Delta is scaled out. No need to consider.
+            % Consider all the outbounding states and update the current
+            % density.
+            for state_cur = 1:n_state
+                p = density_matrix_prev(state_prev,reward_prev)*Q_times_Delta(state_prev,state_cur);
+                density_matrix_cur(state_cur,reward_cur) = ...
+                    density_matrix_cur(state_cur,reward_cur) + p;
+            end                
+        end
+    end
+    density_matrix_prev = density_matrix_cur;
+    density_matrix_cur = zeros(n_state,n_y);
+end
+icdf = sum(sum(density_matrix_prev(:,n_th:end)*Delta,2));
 end
