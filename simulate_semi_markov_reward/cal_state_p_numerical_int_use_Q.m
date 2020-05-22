@@ -9,10 +9,10 @@
 % Output parameter: state_probability - The state probability at
 %                                       evaluation_horizion
 % Version history: 12/05/2020: Created by ZZ
-function state_probability = cal_state_p_numerical_int(evaluation_horizon,Delta,para)
+function state_probability = cal_state_p_numerical_int_use_Q(evaluation_horizon,Delta,para)
 %% Initialize parameters
 pi_0 = para.pi_0; % Initial distribution.
-cal_d_Q = para.cal_d_Q; % Handle to calculate d_Q.
+cal_Q = para.cal_Q; % Handle to calculate d_Q.
 cal_D = para.cal_D; % Handle to calculate D: The first item in the iterative equation.
 
 %% Algorithm begin: Initialization
@@ -26,7 +26,7 @@ for t = (n_t-1):-1:0
     % Making the consecutive summation.      
     for k = (t+1):n_t
         Phi_cur = Phi_cur + ...
-            cal_d_Q((k-t)*Delta,t*Delta)*Delta*Phi{k+1};
+            cal_Q((k-t-1)*Delta,(k-t)*Delta,t*Delta)*Phi{k+1};
     end
     Phi{t+1} = Phi_cur;
 end

@@ -30,7 +30,7 @@ r = [4,3,2,1];
 y_th = 3000;
 F_ref = zeros(1,length(t));
 
-ns = 1e6; % Sample size
+ns = 1e7; % Sample size
 
 %% Create benchmark
 sample_path = cell(1,ns); % Store all the sample path up to evaluation_horizon.
