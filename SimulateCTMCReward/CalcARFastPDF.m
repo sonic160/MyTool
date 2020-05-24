@@ -53,8 +53,8 @@ n_t = floor(T_max/Delta); % Number of steps in t
 n_state = length(S); % Number of states
 % A matrix that stores the previous density f_i((k-1)\Delta,y).
 % The columns of this matrix represents each discretized point on y.
-density_matrix_prev = zeros(n_state,n_x); 
-density_matrix_cur = zeros(n_state,n_x); 
+density_matrix_prev = zeros(n_state,n_x+1); 
+density_matrix_cur = zeros(n_state,n_x+1); 
 % Calculate Q*Delta: This is a matrix whose element is what to be
 % multiplied in the numerical integration.
 Q_times_Delta = Q*Delta;
@@ -73,7 +73,7 @@ for state_prev = 1:n_state
     else
         % Consider all the possible outbound states.
         for state_cur = 1:n_state
-            density_matrix_prev(state_cur,reward_cur) = density_matrix_prev(state_cur,reward_cur) +...
+            density_matrix_prev(state_cur,reward_cur+1) = density_matrix_prev(state_cur,reward_cur+1) +...
                 pi_0(state_prev)/Delta*Q_times_Delta(state_prev,state_cur);
         end
     end
@@ -85,7 +85,7 @@ for t_cur = 2:n_t
     for state_prev = 1:n_state
         % Consider only the states with non-zeros density at the previous
         % states.
-        all_reward_prev = find(density_matrix_prev(state_prev,:)); % Take the corresponding row.       
+        all_reward_prev = find(density_matrix_prev(state_prev,:)) - 1; % Take the corresponding row.       
         for reward_prev = all_reward_prev
             reward_cur = reward_prev + r(state_prev); % Update current reward value. Delta is scaled out. No need to consider.
             % Judge if current reward value already beyond evaluation
@@ -96,15 +96,15 @@ for t_cur = 2:n_t
                 % Consider all the outbounding states and update the current
                 % density.
                 for state_cur = 1:n_state
-                    p = density_matrix_prev(state_prev,reward_prev)*Q_times_Delta(state_prev,state_cur);
-                    density_matrix_cur(state_cur,reward_cur) = ...
-                        density_matrix_cur(state_cur,reward_cur) + p;
+                    p = density_matrix_prev(state_prev,reward_prev+1)*Q_times_Delta(state_prev,state_cur);
+                    density_matrix_cur(state_cur,reward_cur+1) = ...
+                        density_matrix_cur(state_cur,reward_cur+1) + p;
                 end                
             end
         end
     end
     density_matrix_prev = density_matrix_cur;
-    density_matrix_cur = zeros(n_state,n_x);
+    density_matrix_cur = zeros(n_state,n_x+1);
 end
 cdf = sum(sum(density_matrix_prev*Delta,2));
 end
@@ -130,8 +130,8 @@ n_t = floor(T_max/Delta); % Number of steps in t
 n_state = length(S); % Number of states
 % A matrix that stores the previous density f_i((k-1)\Delta,y).
 % The columns of this matrix represents each discretized point on y.
-density_matrix_prev = zeros(n_state,n_y); 
-density_matrix_cur = zeros(n_state,n_y); 
+density_matrix_prev = zeros(n_state,n_y+1); 
+density_matrix_cur = zeros(n_state,n_y+1); 
 % Calculate Q*Delta: This is a matrix whose element is what to be
 % multiplied in the numerical integration.
 Q_times_Delta = Q*Delta;
@@ -145,7 +145,7 @@ for state_prev = 1:n_state
     reward_cur = r(state_prev); % Update current reward value.
     % Consider all the possible outbound states.
     for state_cur = 1:n_state
-        density_matrix_prev(state_cur,reward_cur) = density_matrix_prev(state_cur,reward_cur) +...
+        density_matrix_prev(state_cur,reward_cur+1) = density_matrix_prev(state_cur,reward_cur+1) +...
             pi_0(state_prev)/Delta*Q_times_Delta(state_prev,state_cur);
     end
 end    
@@ -156,20 +156,20 @@ for t_cur = 2:n_t
     for state_prev = 1:n_state
         % Consider only the states with non-zeros density at the previous
         % states.
-        all_reward_prev = find(density_matrix_prev(state_prev,:)); % Take the corresponding row.       
+        all_reward_prev = find(density_matrix_prev(state_prev,:)) - 1; % Take the corresponding row.       
         for reward_prev = all_reward_prev
             reward_cur = reward_prev + r(state_prev); % Update current reward value. Delta is scaled out. No need to consider.
             % Consider all the outbounding states and update the current
             % density.
             for state_cur = 1:n_state
-                p = density_matrix_prev(state_prev,reward_prev)*Q_times_Delta(state_prev,state_cur);
-                density_matrix_cur(state_cur,reward_cur) = ...
-                    density_matrix_cur(state_cur,reward_cur) + p;
+                p = density_matrix_prev(state_prev,reward_prev+1)*Q_times_Delta(state_prev,state_cur);
+                density_matrix_cur(state_cur,reward_cur+1) = ...
+                    density_matrix_cur(state_cur,reward_cur+1) + p;
             end                
         end
     end
     density_matrix_prev = density_matrix_cur;
-    density_matrix_cur = zeros(n_state,n_y);
+    density_matrix_cur = zeros(n_state,n_y+1);
 end
 icdf = sum(sum(density_matrix_prev(:,n_th:end)*Delta,2));
 end
