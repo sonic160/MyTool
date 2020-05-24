@@ -51,3 +51,5 @@ simulate_semi_markov_reward/result_ref_monte_carlo.mat
 simulate_semi_markov_reward/result_ref_monte_carlo.mat
 simulate_semi_markov_reward/result_ref_monte_carlo.mat
 *.mat
+simulate_semi_markov_reward/result_ref_monte_carlo.mat
+*.mat
