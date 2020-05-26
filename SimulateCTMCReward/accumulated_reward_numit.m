@@ -20,42 +20,46 @@
 %                                   non-negtive integer values (IMPORTANT,
 %                                   must be integer).
 %                   tol - Error tolerance
+%                   t   - A vector of time points for cdf evaluation.
 % Output parameter: cdf - The cdf F(t,y<x), at T_max.
-% Version history: 23/05/2020: Created.
+%                   epsilon - The maximal error at the last time point.
+% Version history:  25/05/2020: Add cdf at different time points.
+%                   23/05/2020: Created.
 
-function cdf = accumulated_reward_numit(T_max,x_max,Delta,para,tol)
+function [cdf, epsilon] = accumulated_reward_numit(t,x_max,Delta,para,tol)
     % Initial values.       
-    result = zeros(1,length(Delta)); % A vector of cdfs for each point in Delta.
-    AX = zeros(1,length(Delta)-2); % Result of the Aitken's series.
+    result = zeros(length(Delta),length(t)); % A vector of cdfs for each point in Delta.
+    AX = zeros(length(Delta)-2,length(t)); % Result of the Aitken's series.
     diff = 1; % Difference between two adjacent simulations.
     
     % The first point.
     i = 1;
     % Calculate the first three points in Delta. This is because to
     % calculate AX, it requires three consecutive points.
-    result(i) = accumulated_reward_trapezoid(T_max,x_max,Delta(i),para);
-    result(i+1) = accumulated_reward_trapezoid(T_max,x_max,Delta(i+1),para);
-    result(i+2) = accumulated_reward_trapezoid(T_max,x_max,Delta(i+2),para);
+    result(i,:) = accumulated_reward_trapezoid(t,x_max,Delta(i),para);
+    result(i+1,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+1),para);
+    result(i+2,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+2),para);
     % Calculate the Aitken's series.
-    AX(i) = aitken_extr(result(i),result(i+1),result(i+2));
+    AX(i,:) = aitken_extr(result(i,:),result(i+1,:),result(i+2,:));
     % Go to next point.
     i = i+1;
-    
+
     % Continue search until Delta is empty or the desired accuracy is
     % reached.
-    while (i <= length(Delta)-2) && (diff >= tol)
+    while (i <= length(Delta)-2) && (abs(diff(end)) >= tol)
         % Calculate the original series.
-        result(i+2) = accumulated_reward_trapezoid(T_max,x_max,Delta(i+2),para);
+        result(i+2,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+2),para);
         % Calculate the Aitken's series.
-        AX(i) = aitken_extr(result(i),result(i+1),result(i+2));      
+        AX(i,:) = aitken_extr(result(i,:),result(i+1,:),result(i+2,:));      
         % Update the difference between two adjacent points.
-        diff = abs(AX(i) - AX(i-1));
+        diff = AX(i,:) - AX(i-1,:);
         % Save the result.
-        cdf = AX(i);
+        cdf = AX(i,:);
+        epsilon = diff;
         % Go to next point.
         i = i + 1;
     end
-    
+   
     % Consider different exit conditions.  
     if i > length(Delta)-2
         fprintf('Warning: Itegration terminated because all the points in Delta has been tested but the required accuracy not reached!\n');
@@ -72,8 +76,7 @@ end
 
 % This is to extend the fast algorithm in Tijms and Veldman (2000) by
 % changing to trapezoid integration method.
-% Input parameters: T_max - time limit for the evalutation
-%                   x_max - x limit for the evaluation
+% Input parameters: x_max - x limit for the evaluation
 %                   Delta - step size for the approximation
 %                   para - parameter structure: 
 %                          para.S - state space, a row vector that starts from 1
@@ -82,10 +85,11 @@ end
 %                          para.r - Reward vector, a row vector that takes
 %                                   non-negtive integer values (IMPORTANT,
 %                                   must be integer).
-% Output parameter: cdf - The cdf F(t,y<x), at T_max.
+%                   t - A vector of different time points to evaluate cdf.
+% Output parameter: cdf - The cdf F(t,y<x), at t.
 % Version history: 21/05/2020: Created.
 
-function cdf = accumulated_reward_trapezoid(T_max,x_max,Delta,para)
+function cdf = accumulated_reward_trapezoid(t,x_max,Delta,para)
 %% Initialize parameters
 S = para.S;
 pi_0 = para.pi;
@@ -94,6 +98,7 @@ r = para.r;
 
 %% Algorithm begin: Initialization
 n_x = floor(x_max/Delta); % Number of steps in x
+T_max = t(end); % Get the evaluation horizon.
 n_t = floor(T_max/Delta); % Number of steps in t
 n_state = length(S); % Number of states
 % A matrix that stores the previous density f_i((k-1)\Delta,y).
@@ -106,6 +111,16 @@ Q_times_Delta = Q*Delta;
 % The main diagnose: The probablity of remaining at state i.
 for i = 1:n_state
     Q_times_Delta(i,i) = 1+Q(i,i)*Delta;
+end
+
+n_time_point = length(t); % Get the number of time points that need to be evaluated.
+cdf = zeros(1,n_time_point); % Initial values for cdf.
+index_t = floor(t/Delta); % Transform t into the index considering Delta.
+current_position_t = 1; % A flag variable indicating the current t to be evaluated.
+% If the first point is zero, set cdf(1) to zero directly.
+if index_t(current_position_t) == 0
+    cdf(current_position_t) = (0<x_max);
+    current_position_t = current_position_t + 1; % Go to next time point.
 end
 
 %% Step zero: The intial states and initial distributions.
@@ -123,6 +138,12 @@ for state_prev = 1:n_state
         end
     end
 end    
+% If the cdf at this time step needs to be saved.
+if index_t(current_position_t) == 1
+    cdf(current_position_t) = sum(sum(density_matrix_prev(:,1:(n_x))*Delta,2) + ...
+        density_matrix_prev(:,n_x+1)*Delta/2); % Calculate the cdf at this time point using trapedoid method.
+    current_position_t = current_position_t + 1; % Go to next time point.
+end
 
 %% Begin iterative processes.
 for t_cur = 2:n_t
@@ -150,8 +171,13 @@ for t_cur = 2:n_t
     end
     density_matrix_prev = density_matrix_cur;
     density_matrix_cur = zeros(n_state,n_x+1);
+    
+    % If the cdf at this time step needs to be saved.
+    if index_t(current_position_t) == t_cur
+        cdf(current_position_t) = sum(sum(density_matrix_prev(:,1:(n_x))*Delta,2) + ...
+            density_matrix_prev(:,n_x+1)*Delta/2); % Calculate the cdf at this time point using trapedoid method.
+        current_position_t = current_position_t + 1; % Go to next time point.
+    end
 end
-cdf = sum(sum(density_matrix_prev(:,1:(n_x))*Delta,2) + ...
-    density_matrix_prev(:,n_x+1)*Delta/2);
 
 end
