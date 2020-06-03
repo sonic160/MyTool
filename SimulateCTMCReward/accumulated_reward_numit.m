@@ -103,16 +103,20 @@ end
 %                                   must be integer).
 %                   t - A vector of different time points to evaluate cdf.
 % Output parameter: cdf - The cdf F(t,y<x), at t.
-% Version history: 01/06/2020: Add truncatiopn by state aggregation.
+% Version history: 03/06/2020: Remove n_eval. 
+%                              Only consider the next states with non-zero 
+%                              transition probabilities.
+%                              Optimize performance by switching order of
+%                              iteration.
+%                  01/06/2020: Add truncatiopn by state aggregation.
 %                  21/05/2020: Created.
 
-function [cdf,n_eval] = accumulated_reward_trapezoid(t,x_max,Delta,para)
+function cdf = accumulated_reward_trapezoid(t,x_max,Delta,para)
 %% Initialize parameters
 S = para.S;
 pi_0 = para.pi;
 Q = para.Q;
 r = para.r;
-n_eval = 0; % Counter for evaluation numbers.
 
 %% Algorithm begin: Initialization
 n_x = floor(x_max/Delta); % Number of steps in x
@@ -141,6 +145,12 @@ if index_t(current_position_t) == 0
     current_position_t = current_position_t + 1; % Go to next time point.
 end
 
+%% Get the index of non-zero transition rates.
+index_set = cell(1,n_state);
+for i = 1:n_state
+    index_set{i} = find(Q_times_Delta(i,:));
+end
+
 %% Step zero: The intial states and initial distributions.
 for state_prev = 1:n_state
     reward_cur = r(state_prev); % Update current reward value.
@@ -153,7 +163,6 @@ for state_prev = 1:n_state
         for state_cur = 1:n_state
             density_matrix_prev(state_cur,reward_cur+1) = density_matrix_prev(state_cur,reward_cur+1) +...
                 pi_0(state_prev)/Delta*Q_times_Delta(state_prev,state_cur);
-            n_eval = n_eval + 1; % Update the counter.
         end
     end
 end    
@@ -186,23 +195,23 @@ for t_cur = 2:n_t
 %         additional_term = additional_term + sum(density_matrix_prev(state_prev, all_reward_prev(exceed_index)+1));
         % Remove the impossible density and continue.
         all_reward_prev = all_reward_prev(~exceed_index);
-        for reward_prev = all_reward_prev
-            reward_cur = reward_prev + r(state_prev); % Update current reward value. Delta is scaled out. No need to consider.
-            % Judge if current reward value already beyond evaluation
-            % threshold.
-            if reward_cur > n_x
-                continue;
-            else
-                % Consider all the outbounding states and update the current
-                % density.
-                for state_cur = 1:n_state
-                    p = density_matrix_prev(state_prev,reward_prev+1)*Q_times_Delta(state_prev,state_cur);
-                    density_matrix_cur(state_cur,reward_cur+1) = ...
-                        density_matrix_cur(state_cur,reward_cur+1) + p;
-                    n_eval = n_eval + 1; % Update the counter.
-                end                
-            end
-        end
+        index = index_set{state_prev};
+        % Update current reward value. Delta is scaled out. No need to consider.
+        all_reward_cur = all_reward_prev + r(state_prev); 
+        % Judge if current reward value already beyond evaluation
+        % threshold.
+        flag = (all_reward_cur <= n_x);
+        all_reward_cur = all_reward_cur(flag);
+        all_reward_prev = all_reward_prev(flag);
+        % Consider all the outbounding states and update the current
+        % density.                                
+        for k = 1:length(index)
+            state_cur = index(k);
+            p = density_matrix_prev(state_prev,all_reward_prev+1)*...
+                Q_times_Delta(state_prev,state_cur);
+            density_matrix_cur(state_cur,all_reward_cur+1) = ...
+                density_matrix_cur(state_cur,all_reward_cur+1) + p;
+        end        
     end
     density_matrix_prev = density_matrix_cur;
     density_matrix_cur = zeros(n_state,n_x+1);
