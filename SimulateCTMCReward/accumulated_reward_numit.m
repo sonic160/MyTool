@@ -19,51 +19,66 @@
 %                          para.r - Reward vector, a row vector that takes
 %                                   non-negtive integer values (IMPORTANT,
 %                                   must be integer).
-%                   tol - Error tolerance
+%                   tol - Error tolerance. If not provided, do not
+%                         accelerate, but calculate all the Delta.
 %                   t   - A vector of time points for cdf evaluation.
 % Output parameter: cdf - The cdf F(t,y<x), at T_max.
 %                   epsilon - The maximal error at the last time point.
-% Version history:  01/06/2020: Add truncatiopn by state aggregation.
+% Version history:  03/06/2020: Add input switch.
+%                   01/06/2020: Add truncatiopn by state aggregation.
 %                   25/05/2020: Add cdf at different time points.
 %                   23/05/2020: Created.
 
 function [cdf, epsilon] = accumulated_reward_numit(t,x_max,Delta,para,tol)
-    % Initial values.       
-    result = zeros(length(Delta),length(t)); % A vector of cdfs for each point in Delta.
-    AX = zeros(length(Delta)-2,length(t)); % Result of the Aitken's series.
-    diff = 1; % Difference between two adjacent simulations.
-    
-    % The first point.
-    i = 1;
-    % Calculate the first three points in Delta. This is because to
-    % calculate AX, it requires three consecutive points.
-    result(i,:) = accumulated_reward_trapezoid(t,x_max,Delta(i),para);
-    result(i+1,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+1),para);
-    result(i+2,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+2),para);
-    % Calculate the Aitken's series.
-    AX(i,:) = aitken_extr(result(i,:),result(i+1,:),result(i+2,:));
-    % Go to next point.
-    i = i+1;
+    if nargin == 5 % If tol is provided.        
+        % Initial values.       
+        result = zeros(length(Delta),length(t)); % A vector of cdfs for each point in Delta.
+        AX = zeros(length(Delta)-2,length(t)); % Result of the Aitken's series.
+        diff = 1; % Difference between two adjacent simulations.
 
-    % Continue search until Delta is empty or the desired accuracy is
-    % reached.
-    while (i <= length(Delta)-2) && (abs(diff(end)) >= tol)
-        % Calculate the original series.
+        % The first point.
+        i = 1;
+        % Calculate the first three points in Delta. This is because to
+        % calculate AX, it requires three consecutive points.
+        result(i,:) = accumulated_reward_trapezoid(t,x_max,Delta(i),para);
+        result(i+1,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+1),para);
         result(i+2,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+2),para);
         % Calculate the Aitken's series.
-        AX(i,:) = aitken_extr(result(i,:),result(i+1,:),result(i+2,:));      
-        % Update the difference between two adjacent points.
-        diff = AX(i,:) - AX(i-1,:);
-        % Save the result.
-        cdf = AX(i,:);
-        epsilon = diff;
+        AX(i,:) = aitken_extr(result(i,:),result(i+1,:),result(i+2,:));
         % Go to next point.
-        i = i + 1;
-    end
-   
-    % Consider different exit conditions.  
-    if i > length(Delta)-2
-        fprintf('Warning: Itegration terminated because all the points in Delta has been tested but the required accuracy not reached!\n');
+        i = i+1;
+
+        % Continue search until Delta is empty or the desired accuracy is
+        % reached.
+        while (i <= length(Delta)-2) && (abs(diff(end)) >= tol)
+            % Calculate the original series.
+            result(i+2,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+2),para);
+            % Calculate the Aitken's series.
+            AX(i,:) = aitken_extr(result(i,:),result(i+1,:),result(i+2,:));      
+            % Update the difference between two adjacent points.
+            diff = AX(i,:) - AX(i-1,:);
+            % Save the result.
+            cdf = AX(i,:);
+            epsilon = diff;
+            % Go to next point.
+            i = i + 1;
+        end
+
+        % Consider different exit conditions.  
+        if i > length(Delta)-2
+            fprintf('Warning: Itegration terminated because all the points in Delta has been tested but the required accuracy not reached!\n');
+        end
+    else
+        if nargin == 4 % If tol not provided.
+            cdf = zeros(length(Delta),length(t)); % A vector of cdfs for each point in Delta.
+            % Do a loop to calculate each cdf.
+            for i = 1:length(Delta)
+                cdf(i,:) = accumulated_reward_trapezoid(t,x_max,Delta(i),para);
+            end
+            epsilon = 'Not applicable';            
+        else
+            error('Wrong inputs!');
+        end
     end
 end
 
