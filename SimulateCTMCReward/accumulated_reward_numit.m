@@ -19,50 +19,66 @@
 %                          para.r - Reward vector, a row vector that takes
 %                                   non-negtive integer values (IMPORTANT,
 %                                   must be integer).
-%                   tol - Error tolerance
+%                   tol - Error tolerance. If not provided, do not
+%                         accelerate, but calculate all the Delta.
 %                   t   - A vector of time points for cdf evaluation.
 % Output parameter: cdf - The cdf F(t,y<x), at T_max.
 %                   epsilon - The maximal error at the last time point.
-% Version history:  25/05/2020: Add cdf at different time points.
+% Version history:  03/06/2020: Add input switch.
+%                   01/06/2020: Add truncatiopn by state aggregation.
+%                   25/05/2020: Add cdf at different time points.
 %                   23/05/2020: Created.
 
 function [cdf, epsilon] = accumulated_reward_numit(t,x_max,Delta,para,tol)
-    % Initial values.       
-    result = zeros(length(Delta),length(t)); % A vector of cdfs for each point in Delta.
-    AX = zeros(length(Delta)-2,length(t)); % Result of the Aitken's series.
-    diff = 1; % Difference between two adjacent simulations.
-    
-    % The first point.
-    i = 1;
-    % Calculate the first three points in Delta. This is because to
-    % calculate AX, it requires three consecutive points.
-    result(i,:) = accumulated_reward_trapezoid(t,x_max,Delta(i),para);
-    result(i+1,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+1),para);
-    result(i+2,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+2),para);
-    % Calculate the Aitken's series.
-    AX(i,:) = aitken_extr(result(i,:),result(i+1,:),result(i+2,:));
-    % Go to next point.
-    i = i+1;
+    if nargin == 5 % If tol is provided.        
+        % Initial values.       
+        result = zeros(length(Delta),length(t)); % A vector of cdfs for each point in Delta.
+        AX = zeros(length(Delta)-2,length(t)); % Result of the Aitken's series.
+        diff = 1; % Difference between two adjacent simulations.
 
-    % Continue search until Delta is empty or the desired accuracy is
-    % reached.
-    while (i <= length(Delta)-2) && (abs(diff(end)) >= tol)
-        % Calculate the original series.
+        % The first point.
+        i = 1;
+        % Calculate the first three points in Delta. This is because to
+        % calculate AX, it requires three consecutive points.
+        result(i,:) = accumulated_reward_trapezoid(t,x_max,Delta(i),para);
+        result(i+1,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+1),para);
         result(i+2,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+2),para);
         % Calculate the Aitken's series.
-        AX(i,:) = aitken_extr(result(i,:),result(i+1,:),result(i+2,:));      
-        % Update the difference between two adjacent points.
-        diff = AX(i,:) - AX(i-1,:);
-        % Save the result.
-        cdf = AX(i,:);
-        epsilon = diff;
+        AX(i,:) = aitken_extr(result(i,:),result(i+1,:),result(i+2,:));
         % Go to next point.
-        i = i + 1;
-    end
-   
-    % Consider different exit conditions.  
-    if i > length(Delta)-2
-        fprintf('Warning: Itegration terminated because all the points in Delta has been tested but the required accuracy not reached!\n');
+        i = i+1;
+
+        % Continue search until Delta is empty or the desired accuracy is
+        % reached.
+        while (i <= length(Delta)-2) && (abs(diff(end)) >= tol)
+            % Calculate the original series.
+            result(i+2,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+2),para);
+            % Calculate the Aitken's series.
+            AX(i,:) = aitken_extr(result(i,:),result(i+1,:),result(i+2,:));      
+            % Update the difference between two adjacent points.
+            diff = AX(i,:) - AX(i-1,:);
+            % Save the result.
+            cdf = AX(i,:);
+            epsilon = diff;
+            % Go to next point.
+            i = i + 1;
+        end
+
+        % Consider different exit conditions.  
+        if i > length(Delta)-2
+            fprintf('Warning: Itegration terminated because all the points in Delta has been tested but the required accuracy not reached!\n');
+        end
+    else
+        if nargin == 4 % If tol not provided.
+            cdf = zeros(length(Delta),length(t)); % A vector of cdfs for each point in Delta.
+            % Do a loop to calculate each cdf.
+            for i = 1:length(Delta)
+                cdf(i,:) = accumulated_reward_trapezoid(t,x_max,Delta(i),para);
+            end
+            epsilon = 'Not applicable';            
+        else
+            error('Wrong inputs!');
+        end
     end
 end
 
@@ -87,14 +103,16 @@ end
 %                                   must be integer).
 %                   t - A vector of different time points to evaluate cdf.
 % Output parameter: cdf - The cdf F(t,y<x), at t.
-% Version history: 21/05/2020: Created.
+% Version history: 01/06/2020: Add truncatiopn by state aggregation.
+%                  21/05/2020: Created.
 
-function cdf = accumulated_reward_trapezoid(t,x_max,Delta,para)
+function [cdf,n_eval] = accumulated_reward_trapezoid(t,x_max,Delta,para)
 %% Initialize parameters
 S = para.S;
 pi_0 = para.pi;
 Q = para.Q;
 r = para.r;
+n_eval = 0; % Counter for evaluation numbers.
 
 %% Algorithm begin: Initialization
 n_x = floor(x_max/Delta); % Number of steps in x
@@ -135,6 +153,7 @@ for state_prev = 1:n_state
         for state_cur = 1:n_state
             density_matrix_prev(state_cur,reward_cur+1) = density_matrix_prev(state_cur,reward_cur+1) +...
                 pi_0(state_prev)/Delta*Q_times_Delta(state_prev,state_cur);
+            n_eval = n_eval + 1; % Update the counter.
         end
     end
 end    
@@ -146,12 +165,27 @@ if index_t(current_position_t) == 1
 end
 
 %% Begin iterative processes.
+additional_term = 0; % This term collects the density that is not possible to exceed n_x.
+additional_error = 0; % Error term in Kahan summation algorithm.
 for t_cur = 2:n_t
     % For each row in density_matrix_prev
     for state_prev = 1:n_state
         % Consider only the states with non-zeros density at the previous
         % states.
-        all_reward_prev = find(density_matrix_prev(state_prev,:)) - 1; % Take the corresponding row.       
+        all_reward_prev = find(density_matrix_prev(state_prev,:)) - 1; % Take the corresponding row.
+        % Judge if it is possible to exceed n_x.
+        t_remain = n_t - t_cur + 1; % Remaining time.
+        % Get the index that cannot exceed.
+        exceed_index = (all_reward_prev + max(r)*t_remain) <= n_x;
+        % Store the density of these points. 
+        % Sum using Kahan summation algorithm to avoid round-off errors.
+        [additional_term, additional_error] = ...
+            kahan_summation(additional_term,...
+            sum(density_matrix_prev(state_prev, all_reward_prev(exceed_index)+1)),...
+            additional_error);
+%         additional_term = additional_term + sum(density_matrix_prev(state_prev, all_reward_prev(exceed_index)+1));
+        % Remove the impossible density and continue.
+        all_reward_prev = all_reward_prev(~exceed_index);
         for reward_prev = all_reward_prev
             reward_cur = reward_prev + r(state_prev); % Update current reward value. Delta is scaled out. No need to consider.
             % Judge if current reward value already beyond evaluation
@@ -165,6 +199,7 @@ for t_cur = 2:n_t
                     p = density_matrix_prev(state_prev,reward_prev+1)*Q_times_Delta(state_prev,state_cur);
                     density_matrix_cur(state_cur,reward_cur+1) = ...
                         density_matrix_cur(state_cur,reward_cur+1) + p;
+                    n_eval = n_eval + 1; % Update the counter.
                 end                
             end
         end
@@ -175,9 +210,23 @@ for t_cur = 2:n_t
     % If the cdf at this time step needs to be saved.
     if index_t(current_position_t) == t_cur
         cdf(current_position_t) = sum(sum(density_matrix_prev(:,1:(n_x))*Delta,2) + ...
-            density_matrix_prev(:,n_x+1)*Delta/2); % Calculate the cdf at this time point using trapedoid method.
+            density_matrix_prev(:,n_x+1)*Delta/2) + ...
+            additional_term*Delta; % Calculate the cdf at this time point using trapedoid method.
         current_position_t = current_position_t + 1; % Go to next time point.
     end
 end
 
+end
+
+% Kahan summation algorithm: Return sum_result = sum_result + input.
+% Avoid round-off errors.
+% Input: c - Accumulated errors.
+function [sum_result, c] = kahan_summation(sum_result,input,c)
+    % Correct the accumulated error.
+    y = input - c;
+    % sum_result is big, y small, so low-order digits of y are lost.
+    t = sum_result + y;
+    % (t - sum) cancels the high-order part of y; subtracting y recovers negative (low part of y)
+    c = (t - sum_result) - y;
+    sum_result = t;       
 end
