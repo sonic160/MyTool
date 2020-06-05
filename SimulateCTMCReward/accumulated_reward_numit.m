@@ -103,7 +103,9 @@ end
 %                                   must be integer).
 %                   t - A vector of different time points to evaluate cdf.
 % Output parameter: cdf - The cdf F(t,y<x), at t.
-% Version history: 03/06/2020: Remove n_eval. 
+% Version history: 04/06/2020: Replace the inner-most loop by vector.
+%                              Replace row indexing by column indexing.
+%                  03/06/2020: Remove n_eval. 
 %                              Only consider the next states with non-zero 
 %                              transition probabilities.
 %                              Optimize performance by switching order of
@@ -124,9 +126,9 @@ T_max = t(end); % Get the evaluation horizon.
 n_t = floor(T_max/Delta); % Number of steps in t
 n_state = length(S); % Number of states
 % A matrix that stores the previous density f_i((k-1)\Delta,y).
-% The columns of this matrix represents each discretized point on y.
-density_matrix_prev = zeros(n_state,n_x+1); 
-density_matrix_cur = zeros(n_state,n_x+1); 
+% The rows of this matrix represents each discretized point on y.
+density_matrix_prev = zeros(n_x+1,n_state); 
+density_matrix_cur = zeros(n_x+1,n_state); 
 % Calculate Q*Delta: This is a matrix whose element is what to be
 % multiplied in the numerical integration.
 Q_times_Delta = Q*Delta;
@@ -146,7 +148,7 @@ if index_t(current_position_t) == 0
 end
 
 %% Get the index of non-zero transition rates.
-index_set = cell(1,n_state);
+index_set = cell(n_state,1);
 for i = 1:n_state
     index_set{i} = find(Q_times_Delta(i,:));
 end
@@ -161,15 +163,15 @@ for state_prev = 1:n_state
     else
         % Consider all the possible outbound states.
         for state_cur = 1:n_state
-            density_matrix_prev(state_cur,reward_cur+1) = density_matrix_prev(state_cur,reward_cur+1) +...
+            density_matrix_prev(reward_cur+1,state_cur) = density_matrix_prev(reward_cur+1,state_cur) +...
                 pi_0(state_prev)/Delta*Q_times_Delta(state_prev,state_cur);
         end
     end
 end    
 % If the cdf at this time step needs to be saved.
 if index_t(current_position_t) == 1
-    cdf(current_position_t) = sum(sum(density_matrix_prev(:,1:(n_x))*Delta,2) + ...
-        density_matrix_prev(:,n_x+1)*Delta/2); % Calculate the cdf at this time point using trapedoid method.
+    cdf(current_position_t) = sum(sum(density_matrix_prev(1:(n_x),:)*Delta) + ...
+        density_matrix_prev(n_x+1,:)*Delta/2); % Calculate the cdf at this time point using trapedoid method.
     current_position_t = current_position_t + 1; % Go to next time point.
 end
 
@@ -181,7 +183,7 @@ for t_cur = 2:n_t
     for state_prev = 1:n_state
         % Consider only the states with non-zeros density at the previous
         % states.
-        all_reward_prev = find(density_matrix_prev(state_prev,:)) - 1; % Take the corresponding row.
+        all_reward_prev = find(density_matrix_prev(:,state_prev)) - 1; 
         % Judge if it is possible to exceed n_x.
         t_remain = n_t - t_cur + 1; % Remaining time.
         % Get the index that cannot exceed.
@@ -190,12 +192,11 @@ for t_cur = 2:n_t
         % Sum using Kahan summation algorithm to avoid round-off errors.
         [additional_term, additional_error] = ...
             kahan_summation(additional_term,...
-            sum(density_matrix_prev(state_prev, all_reward_prev(exceed_index)+1)),...
+            sum(density_matrix_prev(all_reward_prev(exceed_index)+1,state_prev)),...
             additional_error);
 %         additional_term = additional_term + sum(density_matrix_prev(state_prev, all_reward_prev(exceed_index)+1));
         % Remove the impossible density and continue.
-        all_reward_prev = all_reward_prev(~exceed_index);
-        index = index_set{state_prev};
+        all_reward_prev = all_reward_prev(~exceed_index);        
         % Update current reward value. Delta is scaled out. No need to consider.
         all_reward_cur = all_reward_prev + r(state_prev); 
         % Judge if current reward value already beyond evaluation
@@ -203,23 +204,21 @@ for t_cur = 2:n_t
         flag = (all_reward_cur <= n_x);
         all_reward_cur = all_reward_cur(flag);
         all_reward_prev = all_reward_prev(flag);
-        % Consider all the outbounding states and update the current
-        % density.                                
-        for k = 1:length(index)
-            state_cur = index(k);
-            p = density_matrix_prev(state_prev,all_reward_prev+1)*...
-                Q_times_Delta(state_prev,state_cur);
-            density_matrix_cur(state_cur,all_reward_cur+1) = ...
-                density_matrix_cur(state_cur,all_reward_cur+1) + p;
-        end        
+        % Consider only the outbounding states with non-zero density
+        % and update the current density.
+        index = index_set{state_prev};
+        density_matrix_cur(all_reward_cur+1,index) = ...
+            density_matrix_cur(all_reward_cur+1,index) + ...
+            density_matrix_prev(all_reward_prev+1,state_prev).*...
+            Q_times_Delta(state_prev,index);
     end
     density_matrix_prev = density_matrix_cur;
-    density_matrix_cur = zeros(n_state,n_x+1);
+    density_matrix_cur = zeros(n_x+1,n_state);
     
     % If the cdf at this time step needs to be saved.
     if index_t(current_position_t) == t_cur
-        cdf(current_position_t) = sum(sum(density_matrix_prev(:,1:(n_x))*Delta,2) + ...
-            density_matrix_prev(:,n_x+1)*Delta/2) + ...
+        cdf(current_position_t) = sum(sum(density_matrix_prev(1:(n_x),:)*Delta) + ...
+            density_matrix_prev(n_x+1,:)*Delta/2) + ...
             additional_term*Delta; % Calculate the cdf at this time point using trapedoid method.
         current_position_t = current_position_t + 1; % Go to next time point.
     end
