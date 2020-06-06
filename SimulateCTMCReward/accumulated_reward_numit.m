@@ -178,39 +178,39 @@ end
 %% Begin iterative processes.
 additional_term = 0; % This term collects the density that is not possible to exceed n_x.
 additional_error = 0; % Error term in Kahan summation algorithm.
+reward_value = (0:n_x)'; % Values of the rewards.
+% Initial values for the indexes of the current positions.
+all_reward_cur = reward_value<0; % All zeros, column vector.
 for t_cur = 2:n_t
     % For each row in density_matrix_prev
     for state_prev = 1:n_state
         % Consider only the states with non-zeros density at the previous
-        % states.
-        all_reward_prev = find(density_matrix_prev(:,state_prev)) - 1; 
+        % states. all_reward_prev is a logical array.
+        all_reward_prev = density_matrix_prev(:,state_prev)>0; 
         % Judge if it is possible to exceed n_x.
-        t_remain = n_t - t_cur + 1; % Remaining time.
         % Get the index that cannot exceed.
-        exceed_index = (all_reward_prev + max(r)*t_remain) <= n_x;
+        exceed_index = reward_value <= (n_x-max(r)*(n_t-t_cur+1));
         % Store the density of these points. 
         % Sum using Kahan summation algorithm to avoid round-off errors.
         [additional_term, additional_error] = ...
             kahan_summation(additional_term,...
-            sum(density_matrix_prev(all_reward_prev(exceed_index)+1,state_prev)),...
+            sum(density_matrix_prev(all_reward_prev & exceed_index,state_prev)),...
             additional_error);
-%         additional_term = additional_term + sum(density_matrix_prev(state_prev, all_reward_prev(exceed_index)+1));
+%         additional_term = additional_term + sum(density_matrix_prev(all_reward_prev & exceed_index,state_prev));
         % Remove the impossible density and continue.
-        all_reward_prev = all_reward_prev(~exceed_index);        
-        % Update current reward value. Delta is scaled out. No need to consider.
-        all_reward_cur = all_reward_prev + r(state_prev); 
-        % Judge if current reward value already beyond evaluation
-        % threshold.
-        flag = (all_reward_cur <= n_x);
-        all_reward_cur = all_reward_cur(flag);
-        all_reward_prev = all_reward_prev(flag);
+        all_reward_prev = all_reward_prev & (~exceed_index);        
+        % all_reward_prev is shifted to the left by r(state_prev) bits. And
+        % the rest bits are set to 0.
+        all_reward_cur(r(state_prev)+1:end) = all_reward_prev(1:(n_x-r(state_prev)+1));
+        all_reward_cur(1:r(state_prev)) = 0;
+        % Clear the exceeding states in all_reward_prev.
+        all_reward_prev((n_x-r(state_prev)+2):end) = 0;
         % Consider only the outbounding states with non-zero density
-        % and update the current density.
-        index = index_set{state_prev};
-        density_matrix_cur(all_reward_cur+1,index) = ...
-            density_matrix_cur(all_reward_cur+1,index) + ...
-            density_matrix_prev(all_reward_prev+1,state_prev).*...
-            Q_times_Delta(state_prev,index);
+        % and update the current density.        
+        density_matrix_cur(all_reward_cur,index_set{state_prev}) = ...
+            density_matrix_cur(all_reward_cur,index_set{state_prev}) + ...
+            density_matrix_prev(all_reward_prev,state_prev).*...
+            Q_times_Delta(state_prev,index_set{state_prev});
     end
     density_matrix_prev = density_matrix_cur;
     density_matrix_cur = zeros(n_x+1,n_state);
