@@ -181,7 +181,48 @@ additional_error = 0; % Error term in Kahan summation algorithm.
 reward_value = (0:n_x)'; % Values of the rewards.
 % Initial values for the indexes of the current positions.
 all_reward_cur = reward_value<0; % All zeros, column vector.
-for t_cur = 2:n_t
+
+% Threshold t_cur: Below it, all the states are possible.
+% If t_cur_th < 2, then, automatically, the first branch will not be
+% executed.
+t_cur_th = min(n_t,floor(n_t+1-n_x/max(r)));
+% First branch: t_cur = 2:t_cur_th.
+% Do not need to consider truncation.
+for t_cur = 2:t_cur_th
+    % For each row in density_matrix_prev
+    for state_prev = 1:n_state
+        % Consider only the states with non-zeros density at the previous
+        % states. all_reward_prev is a logical array.
+        all_reward_prev = density_matrix_prev(:,state_prev)>0;              
+        % all_reward_prev is shifted to the left by r(state_prev) bits. And
+        % the rest bits are set to 0.
+        all_reward_cur(r(state_prev)+1:end) = all_reward_prev(1:(n_x-r(state_prev)+1));
+        all_reward_cur(1:r(state_prev)) = 0;
+        % Clear the exceeding states in all_reward_prev.
+        all_reward_prev((n_x-r(state_prev)+2):end) = 0;
+        % Consider only the outbounding states with non-zero density
+        % and update the current density.        
+        density_matrix_cur(all_reward_cur,index_set{state_prev}) = ...
+            density_matrix_cur(all_reward_cur,index_set{state_prev}) + ...
+            density_matrix_prev(all_reward_prev,state_prev).*...
+            Q_times_Delta(state_prev,index_set{state_prev});
+    end
+    density_matrix_prev = density_matrix_cur;
+    density_matrix_cur = zeros(n_x+1,n_state);
+    
+    % If the cdf at this time step needs to be saved.
+    if index_t(current_position_t) == t_cur
+        cdf(current_position_t) = sum(sum(density_matrix_prev(1:(n_x),:)*Delta) + ...
+            density_matrix_prev(n_x+1,:)*Delta/2) + ...
+            additional_term*Delta; % Calculate the cdf at this time point using trapedoid method.
+        current_position_t = current_position_t + 1; % Go to next time point.
+    end
+end
+
+% Second branch: t_cur = t_cur_th+1:n_t.
+% When next states are surely below n_x, do not further continue on this 
+% branch. Accumulate the density of such branches in additional_term.
+for t_cur = t_cur_th+1:n_t
     % For each row in density_matrix_prev
     for state_prev = 1:n_state
         % Consider only the states with non-zeros density at the previous
