@@ -128,7 +128,8 @@ n_state = length(S); % Number of states
 % A matrix that stores the previous density f_i((k-1)\Delta,y).
 % The rows of this matrix represents each discretized point on y.
 density_matrix_prev = zeros(n_x+1,n_state); 
-density_matrix_cur = zeros(n_x+1,n_state); 
+density_matrix_cur_0 = zeros(n_x+1,n_state); 
+density_matrix_cur = density_matrix_cur_0;
 % Calculate Q*Delta: This is a matrix whose element is what to be
 % multiplied in the numerical integration.
 Q_times_Delta = Q*Delta;
@@ -148,10 +149,11 @@ if index_t(current_position_t) == 0
 end
 
 %% Get the index of non-zero transition rates.
-index_set = cell(n_state,1);
-for i = 1:n_state
-    index_set{i} = find(Q_times_Delta(i,:));
-end
+% index_set = cell(n_state,1);
+% for i = 1:n_state
+%     index_set{i} = find(Q_times_Delta(i,:));
+% end
+index_set = Q_times_Delta>0;
 
 %% Step zero: The intial states and initial distributions.
 for state_prev = 1:n_state
@@ -190,25 +192,25 @@ t_cur_th = min(n_t,floor(n_t+1-n_x/max(r)));
 % Do not need to consider truncation.
 for t_cur = 2:t_cur_th
     % For each row in density_matrix_prev
-    for state_prev = 1:n_state
-        % Consider only the states with non-zeros density at the previous
-        % states. all_reward_prev is a logical array.
-        all_reward_prev = density_matrix_prev(:,state_prev)>0;              
+    % Consider only the states with non-zeros density at the previous
+    % states. all_reward_prev is a logical array.
+    all_reward_prev = density_matrix_prev>0;
+    for state_prev = 1:n_state                      
         % all_reward_prev is shifted to the left by r(state_prev) bits. And
         % the rest bits are set to 0.
-        all_reward_cur(r(state_prev)+1:end) = all_reward_prev(1:(n_x-r(state_prev)+1));
+        all_reward_cur(r(state_prev)+1:end) = all_reward_prev(1:(n_x-r(state_prev)+1),state_prev);
         all_reward_cur(1:r(state_prev)) = 0;
         % Clear the exceeding states in all_reward_prev.
-        all_reward_prev((n_x-r(state_prev)+2):end) = 0;
+        all_reward_prev((n_x-r(state_prev)+2):end,state_prev) = 0;
         % Consider only the outbounding states with non-zero density
         % and update the current density.        
-        density_matrix_cur(all_reward_cur,index_set{state_prev}) = ...
-            density_matrix_cur(all_reward_cur,index_set{state_prev}) + ...
-            density_matrix_prev(all_reward_prev,state_prev).*...
-            Q_times_Delta(state_prev,index_set{state_prev});
+        density_matrix_cur(all_reward_cur,index_set(state_prev,:)) = ...
+            density_matrix_cur(all_reward_cur,index_set(state_prev,:)) + ...
+            density_matrix_prev(all_reward_prev(:,state_prev),state_prev).*...
+            Q_times_Delta(state_prev,index_set(state_prev,:));
     end
     density_matrix_prev = density_matrix_cur;
-    density_matrix_cur = zeros(n_x+1,n_state);
+    density_matrix_cur = density_matrix_cur_0;
     
     % If the cdf at this time step needs to be saved.
     if index_t(current_position_t) == t_cur
@@ -224,10 +226,10 @@ end
 % branch. Accumulate the density of such branches in additional_term.
 for t_cur = t_cur_th+1:n_t
     % For each row in density_matrix_prev
-    for state_prev = 1:n_state
-        % Consider only the states with non-zeros density at the previous
-        % states. all_reward_prev is a logical array.
-        all_reward_prev = density_matrix_prev(:,state_prev)>0; 
+    % Consider only the states with non-zeros density at the previous
+    % states. all_reward_prev is a logical array.
+    all_reward_prev = density_matrix_prev>0;
+    for state_prev = 1:n_state         
         % Judge if it is possible to exceed n_x.
         % Get the index that cannot exceed.
         exceed_index = reward_value <= (n_x-max(r)*(n_t-t_cur+1));
@@ -235,26 +237,26 @@ for t_cur = t_cur_th+1:n_t
         % Sum using Kahan summation algorithm to avoid round-off errors.
         [additional_term, additional_error] = ...
             kahan_summation(additional_term,...
-            sum(density_matrix_prev(all_reward_prev & exceed_index,state_prev)),...
+            sum(density_matrix_prev(all_reward_prev(:,state_prev) & exceed_index,state_prev)),...
             additional_error);
 %         additional_term = additional_term + sum(density_matrix_prev(all_reward_prev & exceed_index,state_prev));
         % Remove the impossible density and continue.
-        all_reward_prev = all_reward_prev & (~exceed_index);        
+        all_reward_prev(:,state_prev) = all_reward_prev(:,state_prev) & (~exceed_index);        
         % all_reward_prev is shifted to the left by r(state_prev) bits. And
         % the rest bits are set to 0.
-        all_reward_cur(r(state_prev)+1:end) = all_reward_prev(1:(n_x-r(state_prev)+1));
+        all_reward_cur(r(state_prev)+1:end) = all_reward_prev(1:(n_x-r(state_prev)+1),state_prev);
         all_reward_cur(1:r(state_prev)) = 0;
         % Clear the exceeding states in all_reward_prev.
-        all_reward_prev((n_x-r(state_prev)+2):end) = 0;
+        all_reward_prev((n_x-r(state_prev)+2):end,state_prev) = 0;
         % Consider only the outbounding states with non-zero density
         % and update the current density.        
-        density_matrix_cur(all_reward_cur,index_set{state_prev}) = ...
-            density_matrix_cur(all_reward_cur,index_set{state_prev}) + ...
-            density_matrix_prev(all_reward_prev,state_prev).*...
-            Q_times_Delta(state_prev,index_set{state_prev});
+        density_matrix_cur(all_reward_cur,index_set(state_prev,:)) = ...
+            density_matrix_cur(all_reward_cur,index_set(state_prev,:)) + ...
+            density_matrix_prev(all_reward_prev(:,state_prev),state_prev).*...
+            Q_times_Delta(state_prev,index_set(state_prev,:));
     end
     density_matrix_prev = density_matrix_cur;
-    density_matrix_cur = zeros(n_x+1,n_state);
+    density_matrix_cur = density_matrix_cur_0;
     
     % If the cdf at this time step needs to be saved.
     if index_t(current_position_t) == t_cur
