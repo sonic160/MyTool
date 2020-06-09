@@ -29,7 +29,7 @@
 %                   25/05/2020: Add cdf at different time points.
 %                   23/05/2020: Created.
 
-function [cdf, epsilon] = accumulated_reward_numit(t,x_max,Delta,para,tol)
+function [cdf, epsilon] = accumulated_reward_numit_direct(t,x_max,Delta,para,tol)
     if nargin == 5 % If tol is provided.        
         % Initial values.       
         result = zeros(length(Delta),length(t)); % A vector of cdfs for each point in Delta.
@@ -149,10 +149,6 @@ if index_t(current_position_t) == 0
 end
 
 %% Get the index of non-zero transition rates.
-% index_set = cell(n_state,1);
-% for i = 1:n_state
-%     index_set{i} = find(Q_times_Delta(i,:));
-% end
 index_set = Q_times_Delta>0;
 
 %% Step zero: The intial states and initial distributions.
@@ -178,77 +174,15 @@ if index_t(current_position_t) == 1
 end
 
 %% Begin iterative processes.
-additional_term = 0; % This term collects the density that is not possible to exceed n_x.
-additional_error = 0; % Error term in Kahan summation algorithm.
-reward_value = (0:n_x)'; % Values of the rewards.
-% Threshold t_cur: Below it, all the states are possible.
-% If t_cur_th < 2, then, automatically, the first branch will not be
-% executed.
-t_cur_th = min(n_t,floor(n_t+1-n_x/max(r)));
-% First branch: t_cur = 2:t_cur_th.
-% Do not need to consider truncation.
-all_reward_cur = reward_value<0;
-for t_cur = 2:t_cur_th
-    % For each row in density_matrix_prev
-    for state_prev = 1:n_state
-        % Get the nonzero densities at state_prev. all_reward_prev is a logical array.
-        all_reward_prev = density_matrix_prev(:,state_prev)>0;
-        % all_reward_prev is shifted to the left by r(state_prev) bits. And
-        % the rest bits are set to 0.
-        all_reward_cur(r(state_prev)+1:end) = all_reward_prev(1:(n_x-r(state_prev)+1));
-        all_reward_cur(1:r(state_prev)) = 0;
-        % Clear the exceeding states in all_reward_prev.
-        all_reward_prev((n_x-r(state_prev)+2):end,state_prev) = 0;
-        % Consider only the outbounding states with non-zero density
-        % and update the current density.        
-        density_matrix_cur(all_reward_cur,index_set(state_prev,:)) = ...
-            density_matrix_cur(all_reward_cur,index_set(state_prev,:)) + ...
-            density_matrix_prev(all_reward_prev(1:(n_x-r(state_prev)+1)),state_prev).*...
-            Q_times_Delta(state_prev,index_set(state_prev,:));
-    end
-    density_matrix_prev = density_matrix_cur;
-    density_matrix_cur = density_matrix_cur_0;
-    
-    % If the cdf at this time step needs to be saved.
-    if index_t(current_position_t) == t_cur
-        cdf(current_position_t) = sum(sum(density_matrix_prev(1:(n_x),:)*Delta) + ...
-            density_matrix_prev(n_x+1,:)*Delta/2) + ...
-            additional_term*Delta; % Calculate the cdf at this time point using trapedoid method.
-        current_position_t = current_position_t + 1; % Go to next time point.
-    end
-end
-
-% Second branch: t_cur = t_cur_th+1:n_t.
-% When next states are surely below n_x, do not further continue on this 
-% branch. Accumulate the density of such branches in additional_term.
-for t_cur = t_cur_th+1:n_t
+density_matrix_prev = sparse(density_matrix_prev);
+for t_cur = 2:n_t
     % For each row in density_matrix_prev    
-    for state_prev = 1:n_state         
-        % Get the nonzero densities at state_prev.
-        all_reward_prev = density_matrix_prev(:,state_prev)>0;
-        % Judge if it is possible to exceed n_x.
-        % Get the index that cannot exceed.
-        exceed_index = reward_value <= (n_x-max(r)*(n_t-t_cur+1));
-        % Store the density of these points. 
-        % Sum using Kahan summation algorithm to avoid round-off errors.
-        [additional_term, additional_error] = ...
-            kahan_summation(additional_term,...
-            sum(density_matrix_prev(all_reward_prev & exceed_index,state_prev)),...
-            additional_error);
-%         additional_term = additional_term + sum(density_matrix_prev(all_reward_prev & exceed_index,state_prev));
-        % Remove the impossible density and continue.
-        all_reward_prev = all_reward_prev & (~exceed_index);        
-        % all_reward_prev is shifted to the left by r(state_prev) bits. And
-        % the rest bits are set to 0.
-        all_reward_prev(r(state_prev)+1:end) = all_reward_prev(1:(n_x-r(state_prev)+1));
-        all_reward_prev(1:r(state_prev)) = 0;
-        % Clear the exceeding states in all_reward_prev.
-        all_reward_prev((n_x-r(state_prev)+2):end,state_prev) = 0;
+    for state_prev = 1:n_state                              
         % Consider only the outbounding states with non-zero density
         % and update the current density.        
-        density_matrix_cur(all_reward_prev,index_set(state_prev,:)) = ...
-            density_matrix_cur(all_reward_prev,index_set(state_prev,:)) + ...
-            density_matrix_prev(all_reward_prev(r(state_prev)+1:end),state_prev).*...
+        density_matrix_cur(r(state_prev)+1:end,index_set(state_prev,:)) = ...
+            density_matrix_cur(r(state_prev)+1:end,index_set(state_prev,:)) + ...
+            density_matrix_prev(1:(n_x-r(state_prev)+1),state_prev).*...
             Q_times_Delta(state_prev,index_set(state_prev,:));
     end
     density_matrix_prev = density_matrix_cur;
@@ -257,23 +191,9 @@ for t_cur = t_cur_th+1:n_t
     % If the cdf at this time step needs to be saved.
     if index_t(current_position_t) == t_cur
         cdf(current_position_t) = sum(sum(density_matrix_prev(1:(n_x),:)*Delta) + ...
-            density_matrix_prev(n_x+1,:)*Delta/2) + ...
-            additional_term*Delta; % Calculate the cdf at this time point using trapedoid method.
+            density_matrix_prev(n_x+1,:)*Delta/2); % Calculate the cdf at this time point using trapedoid method.
         current_position_t = current_position_t + 1; % Go to next time point.
     end
 end
 
-end
-
-% Kahan summation algorithm: Return sum_result = sum_result + input.
-% Avoid round-off errors.
-% Input: c - Accumulated errors.
-function [sum_result, c] = kahan_summation(sum_result,input,c)
-    % Correct the accumulated error.
-    y = input - c;
-    % sum_result is big, y small, so low-order digits of y are lost.
-    t = sum_result + y;
-    % (t - sum) cancels the high-order part of y; subtracting y recovers negative (low part of y)
-    c = (t - sum_result) - y;
-    sum_result = t;       
 end
