@@ -149,10 +149,6 @@ if index_t(current_position_t) == 0
 end
 
 %% Get the index of non-zero transition rates.
-% index_set = cell(n_state,1);
-% for i = 1:n_state
-%     index_set{i} = find(Q_times_Delta(i,:));
-% end
 index_set = Q_times_Delta>0;
 
 %% Step zero: The intial states and initial distributions.
@@ -187,7 +183,8 @@ reward_value = (0:n_x)'; % Values of the rewards.
 t_cur_th = min(n_t,floor(n_t+1-n_x/max(r)));
 % First branch: t_cur = 2:t_cur_th.
 % Do not need to consider truncation.
-all_reward_cur = reward_value<0;
+all_reward_cur_zero = reward_value<0;
+all_reward_cur = all_reward_cur_zero;
 for t_cur = 2:t_cur_th
     % For each row in density_matrix_prev
     for state_prev = 1:n_state
@@ -195,16 +192,14 @@ for t_cur = 2:t_cur_th
         all_reward_prev = density_matrix_prev(:,state_prev)>0;
         % all_reward_prev is shifted to the left by r(state_prev) bits. And
         % the rest bits are set to 0.
-        all_reward_cur(r(state_prev)+1:end) = all_reward_prev(1:(n_x-r(state_prev)+1));
-        all_reward_cur(1:r(state_prev)) = 0;
-        % Clear the exceeding states in all_reward_prev.
-        all_reward_prev((n_x-r(state_prev)+2):end,state_prev) = 0;
+        all_reward_cur(r(state_prev)+1:end) = all_reward_prev(1:(n_x-r(state_prev)+1));        
         % Consider only the outbounding states with non-zero density
         % and update the current density.        
         density_matrix_cur(all_reward_cur,index_set(state_prev,:)) = ...
             density_matrix_cur(all_reward_cur,index_set(state_prev,:)) + ...
             density_matrix_prev(all_reward_prev(1:(n_x-r(state_prev)+1)),state_prev).*...
-            Q_times_Delta(state_prev,index_set(state_prev,:));
+            Q_times_Delta(state_prev,index_set(state_prev,:));        
+        all_reward_cur = all_reward_cur_zero;
     end
     density_matrix_prev = density_matrix_cur;
     density_matrix_cur = density_matrix_cur_0;
@@ -240,16 +235,14 @@ for t_cur = t_cur_th+1:n_t
         all_reward_prev = all_reward_prev & (~exceed_index);        
         % all_reward_prev is shifted to the left by r(state_prev) bits. And
         % the rest bits are set to 0.
-        all_reward_prev(r(state_prev)+1:end) = all_reward_prev(1:(n_x-r(state_prev)+1));
-        all_reward_prev(1:r(state_prev)) = 0;
-        % Clear the exceeding states in all_reward_prev.
-        all_reward_prev((n_x-r(state_prev)+2):end,state_prev) = 0;
+        all_reward_cur(r(state_prev)+1:end) = all_reward_prev(1:(n_x-r(state_prev)+1));
         % Consider only the outbounding states with non-zero density
         % and update the current density.        
-        density_matrix_cur(all_reward_prev,index_set(state_prev,:)) = ...
-            density_matrix_cur(all_reward_prev,index_set(state_prev,:)) + ...
-            density_matrix_prev(all_reward_prev(r(state_prev)+1:end),state_prev).*...
-            Q_times_Delta(state_prev,index_set(state_prev,:));
+        density_matrix_cur(all_reward_cur,index_set(state_prev,:)) = ...
+            density_matrix_cur(all_reward_cur,index_set(state_prev,:)) + ...
+            density_matrix_prev(all_reward_prev(1:(n_x-r(state_prev)+1)),state_prev).*...
+            Q_times_Delta(state_prev,index_set(state_prev,:));        
+        all_reward_cur = all_reward_cur_zero;
     end
     density_matrix_prev = density_matrix_cur;
     density_matrix_cur = density_matrix_cur_0;
