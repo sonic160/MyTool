@@ -1,4 +1,5 @@
 clear; clc;
+addpath('..\CopyMask');
 %% Parameter definition
 S = 1:5; % state space
 pi = [1,0,0,0,0]; % initial distribution
@@ -21,9 +22,9 @@ addpath('..\');
 x_max = 25.4*100/4; % Limit x values
 T_max = 40; % Time limit
 Delta = 1/4*(1/2).^(0:7);
-tic;
+% tic;
 result = 1 - accumulated_reward_numit(T_max,x_max,Delta(4),para);
-toc
+% toc
 % tic;
 % result_direct = 1 - accumulated_reward_numit_direct(T_max,x_max,Delta(4),para);
 % toc
