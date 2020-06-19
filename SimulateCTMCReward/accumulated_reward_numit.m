@@ -103,7 +103,14 @@ end
 %                                   must be integer).
 %                   t - A vector of different time points to evaluate cdf.
 % Output parameter: cdf - The cdf F(t,y<x), at t.
-% Version history: 04/06/2020: Replace the inner-most loop by vector.
+% Version history: 10/06/2020: Improve the efficiency of resetting all_reward_cur.
+%                  08/06/2020: - Avoid create zeros(n_x+1,n_state) in each cycle.
+%                              - Change index_set from cell array to logical array.
+%                              - Delete a redundant calculation of all_reward_prev.
+%                  07/06/2020: Branch based on t_cur: Below it, all the states
+%                              are possible. If t_cur_th < 2, then, automatically, 
+%                              the first branch will not be executed.
+%                  04/06/2020: Replace the inner-most loop by vector.
 %                              Replace row indexing by column indexing.
 %                  03/06/2020: Remove n_eval. 
 %                              Only consider the next states with non-zero 
