@@ -103,7 +103,8 @@ end
 %                                   must be integer).
 %                   t - A vector of different time points to evaluate cdf.
 % Output parameter: cdf - The cdf F(t,y<x), at t.
-% Version history: 10/06/2020: Improve the efficiency of resetting all_reward_cur.
+% Version history: 19/06/2020: Fix bug on the truncation by aggregation.
+%                  10/06/2020: Improve the efficiency of resetting all_reward_cur.
 %                  08/06/2020: - Avoid create zeros(n_x+1,n_state) in each cycle.
 %                              - Change index_set from cell array to logical array.
 %                              - Delete a redundant calculation of all_reward_prev.
@@ -187,7 +188,7 @@ reward_value = (0:n_x)'; % Values of the rewards.
 % Threshold t_cur: Below it, all the states are possible.
 % If t_cur_th < 2, then, automatically, the first branch will not be
 % executed.
-t_cur_th = min(n_t,floor(n_t+1-n_x/max(r)));
+t_cur_th = min(n_t,floor(n_t+1-(n_x-1)/max(r)));
 % First branch: t_cur = 2:t_cur_th.
 % Do not need to consider truncation.
 all_reward_cur_zero = reward_value<0;
@@ -230,7 +231,7 @@ for t_cur = t_cur_th+1:n_t
         all_reward_prev = density_matrix_prev(:,state_prev)>0;
         % Judge if it is possible to exceed n_x.
         % Get the index that cannot exceed.
-        exceed_index = reward_value <= (n_x-max(r)*(n_t-t_cur+1));
+        exceed_index = reward_value <= (n_x-1-max(r)*(n_t-t_cur+1));
         % Store the density of these points. 
         % Sum using Kahan summation algorithm to avoid round-off errors.
         [additional_term, additional_error] = ...
