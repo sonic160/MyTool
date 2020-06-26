@@ -24,7 +24,10 @@
 %                   t   - A vector of time points for cdf evaluation.
 % Output parameter: cdf - The cdf F(t,y<x), at T_max.
 %                   epsilon - The maximal error at the last time point.
-% Version history:  03/06/2020: Add input switch.
+% Version history:  26/06/2020: Change the acceleration series from
+%                               Aitken's Delta 2 to adjacent error
+%                               estimations.
+%                   03/06/2020: Add input switch.
 %                   01/06/2020: Add truncatiopn by state aggregation.
 %                   25/05/2020: Add cdf at different time points.
 %                   23/05/2020: Created.
@@ -33,7 +36,7 @@ function [cdf, epsilon] = accumulated_reward_numit_ext_markov(t,x_max,Delta,para
     if nargin == 5 % If tol is provided.        
         % Initial values.       
         result = zeros(length(Delta),length(t)); % A vector of cdfs for each point in Delta.
-        AX = zeros(length(Delta)-2,length(t)); % Result of the Aitken's series.
+        result_cor = zeros(length(Delta)-1,length(t)); % Result of the Aitken's series.
         diff = 1; % Difference between two adjacent simulations.
 
         % The first point.
@@ -42,30 +45,29 @@ function [cdf, epsilon] = accumulated_reward_numit_ext_markov(t,x_max,Delta,para
         % calculate AX, it requires three consecutive points.
         result(i,:) = accumulated_reward_trapezoid(t,x_max,Delta(i),para);
         result(i+1,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+1),para);
-        result(i+2,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+2),para);
         % Calculate the Aitken's series.
-        AX(i,:) = aitken_extr(result(i,:),result(i+1,:),result(i+2,:));
+        result_cor(i,:) = 2*result(i+1,:)-result(i,:);
         % Go to next point.
         i = i+1;
 
         % Continue search until Delta is empty or the desired accuracy is
         % reached.
-        while (i <= length(Delta)-2) && (abs(diff(end)) >= tol)
+        while (i <= length(Delta)-1) && (abs(diff(end)) >= tol)
             % Calculate the original series.
-            result(i+2,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+2),para);
+            result(i+1,:) = accumulated_reward_trapezoid(t,x_max,Delta(i+1),para);
             % Calculate the Aitken's series.
-            AX(i,:) = aitken_extr(result(i,:),result(i+1,:),result(i+2,:));      
+            result_cor(i,:) = 2*result(i+1,:)-result(i,:);
             % Update the difference between two adjacent points.
-            diff = AX(i,:) - AX(i-1,:);
+            diff = result_cor(i,:) - result_cor(i-1,:);
             % Save the result.
-            cdf = AX(i,:);
+            cdf = result_cor(i,:);
             epsilon = diff;
             % Go to next point.
             i = i + 1;
         end
 
         % Consider different exit conditions.  
-        if i > length(Delta)-2
+        if i > length(Delta)-1
             fprintf('Warning: Itegration terminated because all the points in Delta has been tested but the required accuracy not reached!\n');
         end
     else
@@ -80,14 +82,6 @@ function [cdf, epsilon] = accumulated_reward_numit_ext_markov(t,x_max,Delta,para
             error('Wrong inputs!');
         end
     end
-end
-
-% Calculate the accelerated series AX.
-function AX = aitken_extr(x_i,x_ip1,x_ip2)   
-    Delta_x_n = x_ip1 - x_i;
-    Delta_x_np1 = x_ip2 - x_ip1;
-    Delta_square_x_n = Delta_x_np1 - Delta_x_n;
-    AX = x_i - Delta_x_n.^2./Delta_square_x_n;
 end
 
 % This is to extend the fast algorithm in Tijms and Veldman (2000) by
