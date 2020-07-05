@@ -100,7 +100,9 @@ end
 %                                   must be integer).
 %                   t - A vector of different time points to evaluate cdf.
 % Output parameter: cdf - The cdf F(t,y<x), at t.
-% Version history: 19/06/2020: Created.
+% Version history: 01/07/2020: Add a validity check of Q: row sum should be
+%                              0.
+%                  19/06/2020: Created.
 
 function cdf = accumulated_reward_trapezoid(t,x_max,Delta,para)
 %% Initialize parameters
@@ -108,6 +110,11 @@ S = para.S;
 pi_0 = para.pi;
 Q = para.Q;
 r = para.r;
+
+% Validity check: Row sum of Q should be 1.
+if sum(~(abs(sum(Q,2)) <= 100*eps*ones(length(S),1))) ~= 0
+    error('Row sum of Q should be 0!');
+end
 
 %% Algorithm begin: Initialization
 n_x = floor(x_max/Delta); % Number of steps in x
